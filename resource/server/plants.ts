@@ -1,4 +1,4 @@
-import { aiLog, notify, onClientCallback, onClientEvent, optionalExport } from "@aicore-fivem/lib/server";
+import { aiLog, inventory, notify, onClientCallback, onClientEvent } from "@aicore-fivem/lib/server";
 import { mysql } from "@aicore-fivem/mysql";
 import { asArgs, createLogger } from "@aicore-fivem/lib/shared";
 import { Locale, ResourceName } from "common";
@@ -131,7 +131,7 @@ onClientEvent(
   },
 );
 
-/** The weed seed (ai-inventory): planted on foot, away from other plants, within the character's plant limit. */
+/** The weed seed: planted on foot, away from other plants, within the character's plant limit. */
 async function plantSeed(source: number): Promise<void> {
   const ped = GetPlayerPed(String(source));
   const charId = core.GetCharacter(source)?.id;
@@ -139,13 +139,12 @@ async function plantSeed(source: number): Promise<void> {
   const p = pos(source);
   if (plants.near(p.x, p.y, 2)) return notify(source, Locale("DRUGS_ERR_TOO_CLOSE"), "error");
   if (plants.ownedBy(charId) >= content.settings.maxPlants) return notify(source, Locale("DRUGS_ERR_MAX_PLANTS", content.settings.maxPlants), "error");
-  const inventory = optionalExport("ai-inventory");
-  if (!inventory?.RemoveItem(source, "weed_seed", 1)) return;
+  if (!inventory.removeItem(source, "weed_seed", 1)) return;
   try {
     await plants.add(charId, p.x, p.y, p.z - 1);
   } catch (error) {
     log.error("planting failed", error);
-    inventory.AddItem(source, "weed_seed", 1);
+    inventory.addItem(source, "weed_seed", 1);
     return;
   }
   notify(source, Locale("DRUGS_PLANTED", content.settings.growMinutes), "success");
@@ -166,18 +165,15 @@ onClientCallback(EVENTS.harvest, { args: ([id]) => asArgs(typeof id === "number"
   }
   const s = content.settings;
   const count = s.budsMin + Math.floor(Math.random() * (s.budsMax - s.budsMin + 1));
-  if (!optionalExport("ai-inventory")?.AddItem(source, "weed_bud", count)) return fail("DRUGS_ERR_SPACE");
+  if (!inventory.addItem(source, "weed_bud", count)) return fail("DRUGS_ERR_SPACE");
   plants.remove(id);
   aiLog("drugs", `harvested ${count} buds`, { source });
   return { ok: true, count };
 });
 
 // The seed is taken inside plantSeed, once every check passed.
-const registerSeed = () =>
-  optionalExport("ai-inventory")?.RegisterUsableItem("weed_seed", (source: number) => {
-    void plantSeed(source);
-    return false;
-  });
-registerSeed();
-on("onServerResourceStart", (resource: string) => resource === "ai-inventory" && registerSeed());
+inventory.registerUsableItem("weed_seed", (source: number) => {
+  void plantSeed(source);
+  return false;
+});
 on("playerDropped", () => plants.unwatch(Number(globalThis.source)));

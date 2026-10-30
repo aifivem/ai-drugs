@@ -1,4 +1,4 @@
-import { aiLog, aiLogChannels, createDatabaseTables, onClientCallback, optionalExport } from "@aicore-fivem/lib/server";
+import { aiLog, aiLogChannels, createDatabaseTables, inventory, onClientCallback, optionalExport } from "@aicore-fivem/lib/server";
 import { createLogger } from "@aicore-fivem/lib/shared";
 import { Locale, ResourceName } from "common";
 import { EVENTS } from "common/drugs";
@@ -27,14 +27,13 @@ onClientCallback(
     const now = Date.now();
     if ((nextSale.get(source) ?? 0) > now) return fail("DRUGS_ERR_WAIT");
     if (policeOnDuty() < s.sellMinPolice) return fail("DRUGS_ERR_POLICE");
-    const inventory = optionalExport("ai-inventory");
-    const drug = s.drugs.find((d) => (inventory?.GetItemCount(source, d.name) ?? 0) > 0);
-    if (!inventory || !drug) return fail("DRUGS_ERR_NOTHING");
+    const drug = s.drugs.find((d) => inventory.getItemCount(source, d.name) > 0);
+    if (!drug) return fail("DRUGS_ERR_NOTHING");
     nextSale.set(source, now + s.saleCooldown * 1000);
     if (Math.random() * 100 < s.refuseChance) return fail("DRUGS_ERR_REFUSED");
-    const count = Math.min(inventory.GetItemCount(source, drug.name), 1 + Math.floor(Math.random() * 3));
+    const count = Math.min(inventory.getItemCount(source, drug.name), 1 + Math.floor(Math.random() * 3));
     const price = (drug.min + Math.floor(Math.random() * (drug.max - drug.min + 1))) * count;
-    if (!inventory.RemoveItem(source, drug.name, count)) return fail("DRUGS_ERR_NOTHING");
+    if (!inventory.removeItem(source, drug.name, count)) return fail("DRUGS_ERR_NOTHING");
     core.AddMoney(source, s.account, price, "drugs:sale");
     if (Math.random() * 100 < s.alertChance) {
       const p = pos(source);

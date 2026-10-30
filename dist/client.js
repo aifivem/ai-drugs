@@ -80,11 +80,11 @@ try{
 	}
 
 // ../../../packages/lib/src/client/callback.ts
-	const resource = GetCurrentResourceName();
-	const log$1 = createLogger(resource);
+	const resource$1 = GetCurrentResourceName();
+	const log$1 = createLogger(resource$1);
 	const pending = /* @__PURE__ */ new Map();
 	let nextId = 0;
-	onNet(responseEvent(resource), (id, ok, result) => {
+	onNet(responseEvent(resource$1), (id, ok, result) => {
 		if (!fromServer()) return;
 		const entry = typeof id === "number" ? pending.get(id) : void 0;
 		if (!entry) return;
@@ -109,7 +109,7 @@ try{
 				reject,
 				timer
 			});
-			emitNet(requestEvent(name), resource, id, ...args);
+			emitNet(requestEvent(name), resource$1, id, ...args);
 		});
 	}
 
@@ -135,10 +135,16 @@ try{
 		activeGangChangedEvent: "ai-core:activeGangChanged",
 		/** (src, charIds: number[]) each time a player's character screen loads; an appearance resource answers with portraits. */
 		characterScreenEvent: "ai-core:characterScreen",
+		/** (resource: string | null) the inventory behind ai-core's inventory layer changed (the bridge drops its item cache). */
+		inventoryChangedEvent: "ai-core:inventoryChanged",
+		/** (src, name: string, status: Record<string, number> | null) a player used an item; status = the needs it gives, from inventories that define them. */
+		itemUsedEvent: "ai-core:itemUsed",
 		clientPlayerLoadedEvent: "ai-core:client:playerLoaded",
 		clientPlayerUnloadedEvent: "ai-core:client:playerUnloaded",
 		/** (charId: number, url: string) a portrait image of a character on the character screen (e.g. `https://nui-img/<txd>/<txd>`). */
 		clientCharacterPortraitEvent: "ai-core:client:characterPortrait",
+		/** (charId: number) ai-appearance holds this character's look: ai-core dresses its scene ped with `ApplyCharacterAppearance`. */
+		clientCharacterLookEvent: "ai-core:client:characterLook",
 		/** (resource: string, id: string) the interaction key was pressed while that resource's prompt was on top. */
 		clientPromptPressedEvent: "ai-core:client:promptPressed",
 		/** (key: keyof PlayerCache, value) a cached value of the local player changed (one watcher in ai-core for every resource). */
@@ -505,6 +511,9 @@ try{
 
 // ../../../packages/lib/src/client/vehicleProps.ts
 	const MOD_TYPES = Array.from({ length: 50 }, (_, i) => i);
+
+// ../../../packages/lib/src/client/keybind.ts
+	const resource = GetCurrentResourceName();
 
 // ../../../packages/lib/src/fivem/locale.ts
 /** Convar holding the language (`setr ai:locale "en"` in misc.cfg); replicated so clients read it too. */
