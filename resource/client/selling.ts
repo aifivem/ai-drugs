@@ -8,56 +8,56 @@ import {
   requestAnimDict,
   showPrompt,
   triggerServerCallback,
-} from "@aicore-fivem/lib/client"
-import { record } from "@aicore-fivem/lib/shared"
-import { Locale } from "common"
-import { EVENTS } from "common/drugs"
+} from "@aicore-fivem/lib/client";
+import { record } from "@aicore-fivem/lib/shared";
+import { Locale } from "common";
+import { EVENTS } from "common/drugs";
 
-const texts = loadLocaleTexts()
-const PROMPT = "drugsale"
+const texts = loadLocaleTexts();
+const PROMPT = "drugsale";
 
 const distanceTo = (entity: number) => {
-  const [x = 0, y = 0, z = 0] = GetEntityCoords(entity, false)
-  const [px = 0, py = 0, pz = 0] = GetEntityCoords(cache.ped, false)
-  return Math.hypot(x - px, y - py, z - pz)
-}
+  const [x = 0, y = 0, z = 0] = GetEntityCoords(entity, false);
+  const [px = 0, py = 0, pz = 0] = GetEntityCoords(cache.ped, false);
+  return Math.hypot(x - px, y - py, z - pz);
+};
 
 /**
  * Street selling, switched on from the radial menu: once a second it brings a stranger from nearby to the player and
  * shows the sell prompt when they arrive; the server decides the sale.
  */
 class Selling {
-  private timer: ReturnType<typeof setInterval> | null = null
-  private buyer = 0
-  private prompt = false
-  private readonly asked = new Set<number>()
+  private timer: ReturnType<typeof setInterval> | null = null;
+  private buyer = 0;
+  private prompt = false;
+  private readonly asked = new Set<number>();
 
   toggle(): void {
     if (this.timer) {
-      clearInterval(this.timer)
-      this.timer = null
-      this.release()
-      return notify(Locale("DRUGS_SELLING_OFF"), "info", 2000)
+      clearInterval(this.timer);
+      this.timer = null;
+      this.release();
+      return notify(Locale("DRUGS_SELLING_OFF"), "info", 2000);
     }
-    this.timer = setInterval(() => this.step(), 1000)
-    notify(Locale("DRUGS_SELLING_ON"), "info", 3000)
+    this.timer = setInterval(() => this.step(), 1000);
+    notify(Locale("DRUGS_SELLING_ON"), "info", 3000);
   }
 
   private step(): void {
-    if (cache.vehicle !== false) return this.release()
+    if (cache.vehicle !== false) return this.release();
     if (
       this.buyer &&
       (!DoesEntityExist(this.buyer) ||
         IsPedDeadOrDying(this.buyer, true) ||
         distanceTo(this.buyer) > 30)
     )
-      this.release()
-    if (!this.buyer) return this.findBuyer()
-    const close = distanceTo(this.buyer) <= 2.2
+      this.release();
+    if (!this.buyer) return this.findBuyer();
+    const close = distanceTo(this.buyer) <= 2.2;
     if (close !== this.prompt) {
-      this.prompt = close
-      if (close) showPrompt(PROMPT, Locale("DRUGS_PROMPT_SELL"))
-      else hidePrompt(PROMPT)
+      this.prompt = close;
+      if (close) showPrompt(PROMPT, Locale("DRUGS_PROMPT_SELL"));
+      else hidePrompt(PROMPT);
     }
   }
 
@@ -70,40 +70,40 @@ class Selling {
         !IsPedInAnyVehicle(ped, false) &&
         !IsPedDeadOrDying(ped, true) &&
         !this.asked.has(ped) &&
-        distanceTo(ped) <= 25
-    )
-    const ped = peds[Math.floor(Math.random() * peds.length)]
-    if (ped === undefined) return
-    this.buyer = ped
-    this.asked.add(ped)
-    ClearPedTasks(ped)
-    SetBlockingOfNonTemporaryEvents(ped, true)
-    TaskGoToEntity(ped, cache.ped, -1, 1.5, 1.0, 1073741824, 0)
+        distanceTo(ped) <= 25,
+    );
+    const ped = peds[Math.floor(Math.random() * peds.length)];
+    if (ped === undefined) return;
+    this.buyer = ped;
+    this.asked.add(ped);
+    ClearPedTasks(ped);
+    SetBlockingOfNonTemporaryEvents(ped, true);
+    TaskGoToEntity(ped, cache.ped, -1, 1.5, 1.0, 1073741824, 0);
   }
 
   private release(): void {
-    if (this.prompt) hidePrompt(PROMPT)
-    this.prompt = false
+    if (this.prompt) hidePrompt(PROMPT);
+    this.prompt = false;
     if (this.buyer && DoesEntityExist(this.buyer)) {
-      SetBlockingOfNonTemporaryEvents(this.buyer, false)
-      TaskWanderStandard(this.buyer, 10, 10)
+      SetBlockingOfNonTemporaryEvents(this.buyer, false);
+      TaskWanderStandard(this.buyer, 10, 10);
     }
-    this.buyer = 0
+    this.buyer = 0;
   }
 
   async sell(): Promise<void> {
-    const buyer = this.buyer
-    if (!buyer) return
+    const buyer = this.buyer;
+    if (!buyer) return;
     const result = record(
-      await triggerServerCallback(EVENTS.sell, []).catch(() => null)
-    )
+      await triggerServerCallback(EVENTS.sell, []).catch(() => null),
+    );
     if (
       result.ok === true &&
       typeof result.count === "number" &&
       typeof result.price === "number"
     ) {
-      const dict = await requestAnimDict("mp_common")
-      TaskTurnPedToFaceEntity(buyer, cache.ped, 800)
+      const dict = await requestAnimDict("mp_common");
+      TaskTurnPedToFaceEntity(buyer, cache.ped, 800);
       TaskPlayAnim(
         cache.ped,
         dict,
@@ -115,8 +115,8 @@ class Selling {
         0,
         false,
         false,
-        false
-      )
+        false,
+      );
       TaskPlayAnim(
         buyer,
         dict,
@@ -128,20 +128,20 @@ class Selling {
         0,
         false,
         false,
-        false
-      )
-      notify(Locale("DRUGS_SOLD", result.count, result.price), "success")
+        false,
+      );
+      notify(Locale("DRUGS_SOLD", result.count, result.price), "success");
     } else {
       const key =
-        typeof result.error === "string" ? result.error : "DRUGS_ERR_REFUSED"
-      notify(texts[key] ?? key, "error")
+        typeof result.error === "string" ? result.error : "DRUGS_ERR_REFUSED";
+      notify(texts[key] ?? key, "error");
     }
-    setTimeout(() => this.release(), 2000)
+    setTimeout(() => this.release(), 2000);
   }
 }
 
-const selling = new Selling()
-onPromptPressed((id) => id === PROMPT && void selling.sell())
+const selling = new Selling();
+onPromptPressed((id) => id === PROMPT && void selling.sell());
 
 const addRadial = () =>
   optionalExport("ai-radialmenu")?.AddItem({
@@ -149,9 +149,9 @@ const addRadial = () =>
     label: Locale("DRUGS_RADIAL"),
     icon: "money-bill-wave",
     onSelect: () => selling.toggle(),
-  })
-addRadial()
+  });
+addRadial();
 on(
   "onClientResourceStart",
-  (resource: string) => resource === "ai-radialmenu" && addRadial()
-)
+  (resource: string) => resource === "ai-radialmenu" && addRadial(),
+);

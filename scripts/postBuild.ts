@@ -1,85 +1,85 @@
-import { existsSync } from "node:fs"
-import { cp, readFile, writeFile, access } from "node:fs/promises"
-import fg from "fast-glob"
-import { dirname, extname } from "node:path"
-import type Package from "../package.json"
-import { waitFor } from "@overextended/core/utils"
+import { existsSync } from "node:fs";
+import { cp, readFile, writeFile, access } from "node:fs/promises";
+import fg from "fast-glob";
+import { dirname, extname } from "node:path";
+import type Package from "../package.json";
+import { waitFor } from "@overextended/core/utils";
 
 function reduceArray(name: string, files?: string[]): string {
   return files?.[0]
     ? `\n${name} {${files.reduce((acc, value) => {
-        return value ? `${acc}\n\t'${value}',` : acc
+        return value ? `${acc}\n\t'${value}',` : acc;
       }, "")}\n}\n`
-    : ""
+    : "";
 }
 
 async function generateDirectoryGlobs(root: string, useRoot = false) {
   const files = await fg("**/*", {
     cwd: root,
     onlyFiles: true,
-  })
+  });
 
-  const groups = new Map<string, Set<string>>()
+  const groups = new Map<string, Set<string>>();
 
   for (const file of files) {
-    const dir = dirname(file)
+    const dir = dirname(file);
 
-    let ext = extname(file)
+    let ext = extname(file);
 
     if (ext === ".") {
-      ext = ""
+      ext = "";
     }
 
-    let exts = groups.get(dir)
+    let exts = groups.get(dir);
 
     if (!exts) {
-      exts = new Set()
-      groups.set(dir, exts)
+      exts = new Set();
+      groups.set(dir, exts);
     }
 
-    exts.add(ext)
+    exts.add(ext);
   }
 
-  const path = useRoot ? root : "dist"
+  const path = useRoot ? root : "dist";
 
   return [...groups.entries()].flatMap(([dir, exts]) => {
-    const prefix = dir === "." ? `${path}/` : `${path}/${dir}/`
+    const prefix = dir === "." ? `${path}/` : `${path}/${dir}/`;
 
     return [...exts].map((ext) => {
-      return ext ? `${prefix}*${ext}` : `${prefix}*`
-    })
-  })
+      return ext ? `${prefix}*${ext}` : `${prefix}*`;
+    });
+  });
 }
 
 /** `client_script 'dist/client.js'`, or a `client_scripts` block when extra scripts follow the bundle. */
 function scripts(
   side: "client" | "server",
   bundle: boolean,
-  extra?: string[]
+  extra?: string[],
 ): string {
-  const list = [...(bundle ? [`dist/${side}.js`] : []), ...(extra ?? [])]
-  if (list.length === 0) return ""
+  const list = [...(bundle ? [`dist/${side}.js`] : []), ...(extra ?? [])];
+  if (list.length === 0) return "";
   if (list.length === 1)
     return `${side}_script '${list[0]}'
-`
+`;
   return `${side}_scripts {${list
     .map(
       (file) => `
-	'${file}',`
+	'${file}',`,
     )
     .join("")}
 }
-`
+`;
 }
 
-let buildCount = 0
-let fxmanifest = ""
+let buildCount = 0;
+let fxmanifest = "";
 
 export default async function () {
   // Runs after the last bundle: one per side that has resource/<side>/index.ts.
-  const hasClient = existsSync("./resource/client/index.ts")
-  const hasServer = existsSync("./resource/server/index.ts")
-  if (++buildCount < Number(hasClient) + Number(hasServer)) return
+  const hasClient = existsSync("./resource/client/index.ts");
+  const hasServer = existsSync("./resource/server/index.ts");
+  if (++buildCount < Number(hasClient) + Number(hasServer)) return;
 
   const {
     name,
@@ -94,40 +94,40 @@ export default async function () {
     fxClientScripts,
     fxServerScripts,
   }: typeof Package & {
-    fxDependencies?: string[]
+    fxDependencies?: string[];
     /** Manifest version when it must differ from the package version (a stand-in reporting the version it mirrors). */
-    fxVersion?: string
+    fxVersion?: string;
     /** Resource names this one stands in for (`provide`), e.g. a compatibility resource. */
-    fxProvide?: string[]
+    fxProvide?: string[];
     /** Extra files outside public/ that clients may download or other resources include (`@name/path`). */
-    fxFiles?: string[]
+    fxFiles?: string[];
     /** Extra scripts loaded after the bundle on each side (ai-core's Lua bridge). */
-    fxClientScripts?: string[]
-    fxServerScripts?: string[]
-  } = JSON.parse(await readFile("./package.json", "utf8"))
+    fxClientScripts?: string[];
+    fxServerScripts?: string[];
+  } = JSON.parse(await readFile("./package.json", "utf8"));
 
   // public/ is optional: static files players may download, copied to dist/.
-  const hasPublic = existsSync("./public")
-  const files = hasPublic ? await generateDirectoryGlobs("public") : []
-  let web
+  const hasPublic = existsSync("./public");
+  const files = hasPublic ? await generateDirectoryGlobs("public") : [];
+  let web;
 
   try {
-    await access("./web")
+    await access("./web");
 
     web = await waitFor(
       async () => {
-        const web = await generateDirectoryGlobs("dist/web", true)
+        const web = await generateDirectoryGlobs("dist/web", true);
 
-        return web.length ? web : null
+        return web.length ? web : null;
       },
-      { interval: 500, timeout: 1200000 }
-    )
+      { interval: 500, timeout: 1200000 },
+    );
   } catch {}
 
-  if (web) files.push(...web)
+  if (web) files.push(...web);
 
-  files.unshift("locales/*.json")
-  if (fxFiles) files.push(...fxFiles)
+  files.unshift("locales/*.json");
+  if (fxFiles) files.push(...fxFiles);
 
   let body = Object.entries({
     name,
@@ -137,8 +137,8 @@ export default async function () {
     description,
   }).reduce(
     (acc, [key, value]) => (value ? `${acc}${key} '${value}'\n` : acc),
-    ""
-  )
+    "",
+  );
 
   body += `fx_version 'cerulean'
 game 'gta5'
@@ -150,17 +150,17 @@ ${reduceArray("dependencies", fxDependencies)}${reduceArray("files", files)}${(
   )
     .map(
       (n) => `provide '${n}'
-`
+`,
     )
-    .join("")}`
+    .join("")}`;
 
-  if (body === fxmanifest) return
+  if (body === fxmanifest) return;
 
-  console.log(`Generated new fxmanifest.lua`)
-  fxmanifest = body
+  console.log(`Generated new fxmanifest.lua`);
+  fxmanifest = body;
 
-  if (hasPublic) await cp("./public", "./dist", { recursive: true })
+  if (hasPublic) await cp("./public", "./dist", { recursive: true });
 
-  await writeFile("./fxmanifest.lua", body)
-  await writeFile(".yarn.installed", new Date().toISOString())
+  await writeFile("./fxmanifest.lua", body);
+  await writeFile(".yarn.installed", new Date().toISOString());
 }

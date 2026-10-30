@@ -6,5 +6,6 @@
       "common": ["./common"],
       "common/*": ["./common/*"]
     }
-  }
+  },
+  "include": ["common"]
 }
