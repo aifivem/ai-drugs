@@ -111,6 +111,18 @@
       "type": "integer",
       "minimum": 1,
       "maximum": 100
+    },
+    "seedItem": {
+      "description": "Seed item: Using this item plants a weed plant.",
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 48
+    },
+    "budItem": {
+      "description": "Harvest item: A ready plant gives this item.",
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 48
     }
   },
   "required": [
@@ -125,6 +137,8 @@
     "rotMinutes",
     "maxPlants",
     "budsMin",
-    "budsMax"
+    "budsMax",
+    "seedItem",
+    "budItem"
   ]
 }

@@ -45,8 +45,17 @@ function str(value, fallback, max = 64) {
 function record(value) {
 	return typeof value == "object" && value && !Array.isArray(value) ? value : {};
 }
-// ../../../packages/lib/src/shared/records.ts
-const isObject = (value) => typeof value == "object" && !!value && !Array.isArray(value);
+// ../../../packages/lib/src/shared/strict.ts
+function readInt(value, min, max) {
+	return Number.isInteger(value) && value >= min && value <= max ? value : null;
+}
+const readId = (value) => readInt(value, 1, 2147483647), oneArg = (read) => ([value]) => {
+	let parsed = read(value);
+	return parsed === null ? null : [parsed];
+}, fail = (error) => ({
+	ok: !1,
+	error
+}), isObject = (value) => typeof value == "object" && !!value && !Array.isArray(value);
 function readRecords(raw, readOne) {
 	let out = new Map();
 	if (!isObject(raw)) return out;
@@ -139,7 +148,6 @@ function formatText(template, args) {
 		return value === void 0 ? match : String(value);
 	});
 }
-const asArgs = (value) => value === null ? null : [value];
 function createLogger(resource) {
 	let prefix = `[${resource}]`;
 	return {
@@ -214,7 +222,7 @@ const CORE = {
 	clientPlayerLoadedEvent: "ai-core:client:playerLoaded",
 	clientPlayerUnloadedEvent: "ai-core:client:playerUnloaded",
 	clientCharacterPortraitEvent: "ai-core:client:characterPortrait",
-	clientCharacterLookEvent: "ai-core:client:characterLook",
+	characterLooksEvent: "ai-core:client:characterLooks",
 	clientPromptPressedEvent: "ai-core:client:promptPressed",
 	clientCacheEvent: "ai-core:client:cache",
 	clientHudVisibleEvent: "ai-core:client:hudVisible",
@@ -275,6 +283,20 @@ function loadLocaleTexts(resource = GetCurrentResourceName()) {
 }
 // ../../../packages/lib/src/fivem/callbackNames.ts
 const requestEvent = (name) => `aicore:cb:${name}`, responseEvent = (resource) => `aicore:cbr:${resource}`;
+// ../../../packages/lib/src/server/position.ts
+function entityCoords(entity) {
+	let [x = 0, y = 0, z = 0] = GetEntityCoords(entity);
+	return {
+		x,
+		y,
+		z
+	};
+}
+const coordsOf = (source) => entityCoords(GetPlayerPed(String(source)));
+function isNear(source, point, metres) {
+	let [x = 0, y = 0, z = 0] = GetEntityCoords(GetPlayerPed(String(source))), dx = x - point.x, dy = y - point.y, dz = z - point.z;
+	return dx * dx + dy * dy + dz * dz <= metres * metres;
+}
 resourceExport(CORE.resource);
 const log$7 = createLogger(GetCurrentResourceName()), gates = new Set();
 on("playerDropped", () => {
@@ -384,7 +406,7 @@ function toPatch(value) {
 		default: return null;
 	}
 }
-const clone = (value) => value === void 0 ? value : JSON.parse(JSON.stringify(value)), core$14 = resourceExport(CORE.resource), ERR = {
+const clone = (value) => value === void 0 ? value : JSON.parse(JSON.stringify(value)), core$15 = resourceExport(CORE.resource), ERR = {
 	type: "ADMIN_ERR_TYPE",
 	range: "ADMIN_ERR_RANGE",
 	length: "ADMIN_ERR_LENGTH",
@@ -398,7 +420,7 @@ const clone = (value) => value === void 0 ? value : JSON.parse(JSON.stringify(va
 		if (cached && Date.now() - cached.at < 2e3) return cached.values.size > 0 ? cached.values : null;
 		let list = [];
 		try {
-			list = core$14.GetLookupValues(source);
+			list = core$15.GetLookupValues(source);
 		} catch {}
 		let values = new Set(Array.isArray(list) ? list.filter((v) => typeof v == "string") : []);
 		return this.lists.set(source, {
@@ -601,7 +623,7 @@ function writeSchema(resource, name, text, log) {
 	(0, node_fs_promises.mkdir)(dir, { recursive: !0 }).then(() => (0, node_fs_promises.writeFile)(`${dir}/${name}.schema.json`, text, "utf8")).catch((error) => log.error(`writing ${resource}/${path} failed`, error));
 }
 // ../../../packages/lib/src/server/admin/panel.ts
-const core$13 = resourceExport(CORE.resource), DEFAULT_KEY = "^[a-z0-9_]{2,32}$";
+const core$14 = resourceExport(CORE.resource), DEFAULT_KEY = "^[a-z0-9_]{2,32}$";
 function imported(spec, value) {
 	let base = clone(spec.newRecord ?? {}), out = {};
 	for (let name of Object.keys(spec.sections)) {
@@ -625,7 +647,7 @@ var AdminPanel = class {
 	constructor(schema) {
 		this.schema = schema;
 		for (let [name, spec] of Object.entries(schema.files)) this.load(name, spec);
-		registerExport("AdminPanelSnapshot", () => this.snapshot()), registerExport("AdminPanelApply", (admin, patch) => this.apply(admin, patch)), onClientCallback(ADMIN.worldChangesCallback(this.resource), () => Object.fromEntries(this.worldChanges)), setImmediate(() => core$13.RegisterAdminPanel(this.resource));
+		registerExport("AdminPanelSnapshot", () => this.snapshot()), registerExport("AdminPanelApply", (admin, patch) => this.apply(admin, patch)), onClientCallback(ADMIN.worldChangesCallback(this.resource), () => Object.fromEntries(this.worldChanges)), setImmediate(() => core$14.RegisterAdminPanel(this.resource));
 	}
 	get(file) {
 		return this.data.get(file) ?? {};
@@ -759,7 +781,7 @@ var AdminPanel = class {
 		let spec = this.schema.files[file], data = this.get(file), value = key === void 0 ? data : data[key] ?? null;
 		this.dataFiles.get(file)?.write(data), this.views.changed(file, key, value);
 		for (let handler of this.handlers.get(file) ?? []) handler(key, value);
-		if (core$13.AdminPanelChanged({
+		if (core$14.AdminPanelChanged({
 			resource: this.resource,
 			file,
 			key,
@@ -797,19 +819,19 @@ function notify(source, text, kind = "info", duration) {
 	emitNet(CORE.clientNotifyEvent, source, notification);
 }
 // ../../../packages/lib/src/server/inventory.ts
-const core$12 = resourceExport(CORE.resource), inventory = {
-	addItem: (inv, item, count = 1, metadata, slot) => core$12.AddItem(inv, item, count, metadata, slot),
-	removeItem: (inv, item, count = 1, metadata, slot) => core$12.RemoveItem(inv, item, count, metadata, slot),
-	getItemCount: (inv, item, metadata) => core$12.GetItemCount(inv, item, metadata),
-	hasItem: (inv, item, count = 1) => core$12.HasItem(inv, item, count),
-	canCarryItem: (inv, item, count = 1, metadata) => core$12.CanCarryItem(inv, item, count, metadata),
-	getItems: (inv) => core$12.GetItems(inv),
-	clearInventory: (inv) => core$12.ClearInventory(inv),
-	registerStash: (name, label, slots, maxWeight, jobs = []) => core$12.RegisterStash(name, label, slots, maxWeight, jobs),
-	openInventory: (source, inv) => core$12.OpenInventory(source, inv),
-	registerUsableItem: (name, handler) => core$12.RegisterUsableItem(name, handler),
-	getItemDefinition: (name) => core$12.GetItemDefinition(name)
-}, core$11 = resourceExport(CORE.resource);
+const core$13 = resourceExport(CORE.resource), inventory = {
+	addItem: (inv, item, count = 1, metadata, slot) => core$13.AddItem(inv, item, count, metadata, slot),
+	removeItem: (inv, item, count = 1, metadata, slot) => core$13.RemoveItem(inv, item, count, metadata, slot),
+	getItemCount: (inv, item, metadata) => core$13.GetItemCount(inv, item, metadata),
+	hasItem: (inv, item, count = 1) => core$13.HasItem(inv, item, count),
+	canCarryItem: (inv, item, count = 1, metadata) => core$13.CanCarryItem(inv, item, count, metadata),
+	getItems: (inv) => core$13.GetItems(inv),
+	clearInventory: (inv) => core$13.ClearInventory(inv),
+	registerStash: (name, label, slots, maxWeight, jobs = []) => core$13.RegisterStash(name, label, slots, maxWeight, jobs),
+	openInventory: (source, inv) => core$13.OpenInventory(source, inv),
+	registerUsableItem: (name, handler) => core$13.RegisterUsableItem(name, handler),
+	getItemDefinition: (name) => core$13.GetItemDefinition(name)
+}, core$12 = resourceExport(CORE.resource);
 var OnlinePlayers = class {
 	players = new Map();
 	onDuty = new Map();
@@ -818,7 +840,7 @@ var OnlinePlayers = class {
 		if (this.started) return;
 		this.started = !0;
 		let load = (source, character) => {
-			this.put(source, character, (core$11.GetJobs(source) ?? []).map((m) => m.job), (core$11.GetGangs(source) ?? []).map((m) => m.gang)), this.setDuty(source, core$11.GetDutyJob(source));
+			this.put(source, character, (core$12.GetJobs(source) ?? []).map((m) => m.job), (core$12.GetGangs(source) ?? []).map((m) => m.gang)), this.setDuty(source, core$12.GetDutyJob(source));
 		};
 		on(CORE.playerLoadedEvent, load), on(CORE.playerUnloadedEvent, (source) => this.drop(source)), on(CORE.jobsChangedEvent, (source, jobs) => {
 			let player = this.players.get(source);
@@ -827,8 +849,8 @@ var OnlinePlayers = class {
 			let player = this.players.get(source);
 			player && (player.gangs = gangs.map((m) => m.gang));
 		}), on(CORE.dutyChangedEvent, (source, job) => this.setDuty(source, job));
-		for (let source of core$11.GetLoadedSources()) {
-			let character = core$11.GetCharacter(source);
+		for (let source of core$12.GetLoadedSources()) {
+			let character = core$12.GetCharacter(source);
 			character && load(source, character);
 		}
 	}
@@ -871,8 +893,25 @@ var OnlinePlayers = class {
 		return this.start(), this.onDuty.get(job) ?? EMPTY;
 	}
 };
-const EMPTY = new Set();
-new OnlinePlayers(), resourceExport(CORE.resource), resourceExport(CORE.resource), createLogger(GetCurrentResourceName());
+const EMPTY = new Set(), online = new OnlinePlayers();
+resourceExport(CORE.resource), resourceExport(CORE.resource), createLogger(GetCurrentResourceName());
+const dropped = new Set();
+let listening = !1;
+function onDropped(fn) {
+	listening || (listening = !0, on("playerDropped", () => {
+		let source = Number(globalThis.source);
+		for (let handler of dropped) handler(source);
+	})), dropped.add(fn);
+}
+var PlayerMap = class extends Map {
+	constructor(options = {}) {
+		super(), onDropped((source) => {
+			if (!this.has(source)) return;
+			let value = this.get(source);
+			this.delete(source), options.onDrop?.(source, value);
+		});
+	}
+};
 // ../../../packages/lib/src/server/command.ts
 const resource$3 = GetCurrentResourceName();
 createLogger(resource$3), new class {
@@ -15208,8 +15247,8 @@ async function createDatabaseTables(resource, file) {
 }
 IsDuplicityVersion(), resourceExport(CORE.resource), resourceExport(CORE.resource);
 // ../../../packages/lib/src/server/dispatch.ts
-const core$6 = resourceExport(CORE.resource), dispatch = { alert: (alert) => core$6.SendDispatchAlert(alert) };
-resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource);
+const core$7 = resourceExport(CORE.resource), dispatch = { alert: (alert) => core$7.SendDispatchAlert(alert) };
+resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource);
 // resource/common/locale.ts
 const Locale = createLocale(), ResourceName = GetCurrentResourceName();
 IsDuplicityVersion();
@@ -15247,11 +15286,19 @@ function readSettings(raw) {
 		rotMinutes: int$1(v.rotMinutes, 120, 1, 10080),
 		maxPlants: int$1(v.maxPlants, 5, 0, 100),
 		budsMin,
-		budsMax: Math.max(budsMin, int$1(v.budsMax, 8, 1, 100))
+		budsMax: Math.max(budsMin, int$1(v.budsMax, 8, 1, 100)),
+		seedItem: str(v.seedItem, "weed_seed", 48),
+		budItem: str(v.budItem, "weed_bud", 48)
 	};
 }
-// resource/server/schema.ts
-const int = (min, max) => ({
+const DEFAULT_LOOK = {
+	models: [
+		"bkr_prop_weed_01_small_01c",
+		"bkr_prop_weed_med_01a",
+		"bkr_prop_weed_lrg_01a"
+	],
+	drawDistance: 100
+}, int = (min, max) => ({
 	type: "number",
 	min,
 	max,
@@ -15259,226 +15306,338 @@ const int = (min, max) => ({
 }), drugsSchema = {
 	title: "ADMIN_TITLE",
 	icon: "flask",
-	files: { settings: {
-		kind: "settings",
-		sync: "admin",
-		sections: {
-			policeJobs: {
-				type: "names",
-				lookup: "job",
-				max: 10,
-				itemMax: 32,
-				pattern: "^[a-z0-9_]{2,32}$"
-			},
-			account: {
-				type: "text",
-				lookup: "account",
-				min: 2,
-				max: 32
-			},
-			sellMinPolice: int(0, 32),
-			alertChance: int(0, 100),
-			refuseChance: int(0, 100),
-			saleCooldown: int(1, 600),
-			drugs: {
-				type: "list",
-				max: 30,
-				of: {
-					type: "object",
-					fields: {
-						name: {
-							type: "text",
-							lookup: "item",
-							min: 2,
-							max: 48,
-							pattern: "^[a-z0-9_]{2,48}$"
-						},
-						min: int(0, 1e6),
-						max: int(0, 1e6)
-					}
-				}
-			},
-			growMinutes: int(1, 10080),
-			rotMinutes: int(1, 10080),
-			maxPlants: int(0, 100),
-			budsMin: int(1, 100),
-			budsMax: int(1, 100)
-		}
-	} },
-	tabs: [{
-		id: "selling",
-		file: "settings",
-		icon: "money-bill-wave",
-		label: "ADMIN_TAB_SELLING",
-		desc: "ADMIN_TAB_SELLING_DESC",
-		cards: [{
-			icon: "money-bill-wave",
-			title: "ADMIN_C_SELLING",
-			desc: "ADMIN_C_SELLING_DESC",
-			fields: [
-				{
-					widget: "list",
-					path: "drugs",
-					label: "ADMIN_F_DRUGS",
-					addLabel: "ADMIN_ADD_DRUG",
-					max: 30,
-					newRow: {
-						name: "weed_bud",
-						min: 40,
-						max: 80
-					},
-					rows: [
-						{
-							widget: "text",
-							lookup: "item",
-							path: "name",
-							label: "ADMIN_F_ITEM",
-							placeholder: "ADMIN_P_ITEM"
-						},
-						{
-							widget: "number",
-							path: "min",
-							label: "ADMIN_F_MIN",
-							min: 0,
-							max: 1e6,
-							unit: "$"
-						},
-						{
-							widget: "number",
-							path: "max",
-							label: "ADMIN_F_MAX",
-							min: 0,
-							max: 1e6,
-							unit: "$"
-						}
-					]
+	files: {
+		settings: {
+			kind: "settings",
+			sync: "admin",
+			sections: {
+				policeJobs: {
+					type: "names",
+					lookup: "job",
+					max: 10,
+					itemMax: 32,
+					pattern: "^[a-z0-9_]{2,32}$"
 				},
-				{
-					widget: "number",
-					path: "saleCooldown",
-					label: "ADMIN_F_COOLDOWN",
-					hint: "ADMIN_H_COOLDOWN",
-					min: 1,
-					max: 600,
-					unit: "s"
-				},
-				{
-					widget: "number",
-					path: "refuseChance",
-					label: "ADMIN_F_REFUSE",
-					min: 0,
-					max: 100,
-					unit: "%"
-				},
-				{
-					widget: "number",
-					path: "alertChance",
-					label: "ADMIN_F_ALERT",
-					hint: "ADMIN_H_ALERT",
-					min: 0,
-					max: 100,
-					unit: "%"
-				},
-				{
-					widget: "number",
-					path: "sellMinPolice",
-					label: "ADMIN_F_MIN_POLICE",
-					min: 0,
+				account: {
+					type: "text",
+					lookup: "account",
+					min: 2,
 					max: 32
 				},
-				{
-					widget: "tags",
-					lookup: "job",
-					path: "policeJobs",
-					label: "ADMIN_F_POLICE_JOBS",
-					hint: "ADMIN_H_POLICE_JOBS",
-					placeholder: "ADMIN_P_POLICE_JOBS"
+				sellMinPolice: int(0, 32),
+				alertChance: int(0, 100),
+				refuseChance: int(0, 100),
+				saleCooldown: int(1, 600),
+				drugs: {
+					type: "list",
+					max: 30,
+					of: {
+						type: "object",
+						fields: {
+							name: {
+								type: "text",
+								lookup: "item",
+								min: 2,
+								max: 48,
+								pattern: "^[a-z0-9_]{2,48}$"
+							},
+							min: int(0, 1e6),
+							max: int(0, 1e6)
+						}
+					}
 				},
-				{
-					widget: "text",
-					lookup: "account",
-					path: "account",
-					label: "ADMIN_F_ACCOUNT",
-					hint: "ADMIN_H_ACCOUNT",
-					placeholder: "ADMIN_P_ACCOUNT"
+				growMinutes: int(1, 10080),
+				rotMinutes: int(1, 10080),
+				maxPlants: int(0, 100),
+				budsMin: int(1, 100),
+				budsMax: int(1, 100),
+				seedItem: {
+					type: "text",
+					lookup: "item",
+					min: 2,
+					max: 48
+				},
+				budItem: {
+					type: "text",
+					lookup: "item",
+					min: 2,
+					max: 48
 				}
-			]
-		}]
-	}, {
-		id: "plants",
-		file: "settings",
-		icon: "flask",
-		label: "ADMIN_TAB_PLANTS",
-		desc: "ADMIN_TAB_PLANTS_DESC",
-		cards: [{
+			}
+		},
+		plants: {
+			kind: "settings",
+			sync: "all",
+			sections: {
+				models: {
+					type: "object",
+					fields: {
+						small: {
+							type: "text",
+							min: 1,
+							max: 64
+						},
+						medium: {
+							type: "text",
+							min: 1,
+							max: 64
+						},
+						large: {
+							type: "text",
+							min: 1,
+							max: 64
+						}
+					}
+				},
+				drawDistance: {
+					type: "number",
+					min: 20,
+					max: 300
+				}
+			},
+			defaults: {
+				models: {
+					small: DEFAULT_LOOK.models[0],
+					medium: DEFAULT_LOOK.models[1],
+					large: DEFAULT_LOOK.models[2]
+				},
+				drawDistance: DEFAULT_LOOK.drawDistance
+			}
+		}
+	},
+	tabs: [
+		{
+			id: "selling",
+			file: "settings",
+			icon: "money-bill-wave",
+			label: "ADMIN_TAB_SELLING",
+			desc: "ADMIN_TAB_SELLING_DESC",
+			cards: [{
+				icon: "money-bill-wave",
+				title: "ADMIN_C_SELLING",
+				desc: "ADMIN_C_SELLING_DESC",
+				fields: [
+					{
+						widget: "list",
+						path: "drugs",
+						label: "ADMIN_F_DRUGS",
+						addLabel: "ADMIN_ADD_DRUG",
+						max: 30,
+						newRow: {
+							name: "weed_bud",
+							min: 40,
+							max: 80
+						},
+						rows: [
+							{
+								widget: "text",
+								lookup: "item",
+								path: "name",
+								label: "ADMIN_F_ITEM",
+								placeholder: "ADMIN_P_ITEM"
+							},
+							{
+								widget: "number",
+								path: "min",
+								label: "ADMIN_F_MIN",
+								min: 0,
+								max: 1e6,
+								unit: "$"
+							},
+							{
+								widget: "number",
+								path: "max",
+								label: "ADMIN_F_MAX",
+								min: 0,
+								max: 1e6,
+								unit: "$"
+							}
+						]
+					},
+					{
+						widget: "number",
+						path: "saleCooldown",
+						label: "ADMIN_F_COOLDOWN",
+						hint: "ADMIN_H_COOLDOWN",
+						min: 1,
+						max: 600,
+						unit: "s"
+					},
+					{
+						widget: "number",
+						path: "refuseChance",
+						label: "ADMIN_F_REFUSE",
+						min: 0,
+						max: 100,
+						unit: "%"
+					},
+					{
+						widget: "number",
+						path: "alertChance",
+						label: "ADMIN_F_ALERT",
+						hint: "ADMIN_H_ALERT",
+						min: 0,
+						max: 100,
+						unit: "%"
+					},
+					{
+						widget: "number",
+						path: "sellMinPolice",
+						label: "ADMIN_F_MIN_POLICE",
+						min: 0,
+						max: 32
+					},
+					{
+						widget: "tags",
+						lookup: "job",
+						path: "policeJobs",
+						label: "ADMIN_F_POLICE_JOBS",
+						hint: "ADMIN_H_POLICE_JOBS",
+						placeholder: "ADMIN_P_POLICE_JOBS"
+					},
+					{
+						widget: "text",
+						lookup: "account",
+						path: "account",
+						label: "ADMIN_F_ACCOUNT",
+						hint: "ADMIN_H_ACCOUNT",
+						placeholder: "ADMIN_P_ACCOUNT"
+					}
+				]
+			}]
+		},
+		{
+			id: "plants",
+			file: "settings",
 			icon: "flask",
-			title: "ADMIN_C_PLANTS",
-			desc: "ADMIN_C_PLANTS_DESC",
-			fields: [
-				{
-					widget: "number",
-					path: "growMinutes",
-					label: "ADMIN_F_GROW",
-					min: 1,
-					max: 10080,
-					unit: "min"
-				},
-				{
-					widget: "number",
-					path: "rotMinutes",
-					label: "ADMIN_F_ROT",
-					hint: "ADMIN_H_ROT",
-					min: 1,
-					max: 10080,
-					unit: "min"
-				},
-				{
-					widget: "number",
-					path: "maxPlants",
-					label: "ADMIN_F_MAX_PLANTS",
-					hint: "ADMIN_H_MAX_PLANTS",
-					min: 0,
-					max: 100
-				},
-				{
-					widget: "number",
-					path: "budsMin",
-					label: "ADMIN_F_BUDS_MIN",
-					min: 1,
-					max: 100
-				},
-				{
-					widget: "number",
-					path: "budsMax",
-					label: "ADMIN_F_BUDS_MAX",
-					min: 1,
-					max: 100
-				}
-			]
-		}]
-	}]
-}, core = resourceExport("ai-core"), panel = new AdminPanel(drugsSchema), content = { settings: readSettings(panel.get("settings")) };
-panel.onChange("settings", () => content.settings = readSettings(panel.get("settings")));
-const fail = (error) => ({
-	ok: !1,
-	error
-});
-function pos(source) {
-	let [x = 0, y = 0, z = 0] = GetEntityCoords(GetPlayerPed(String(source)));
-	return {
-		x,
-		y,
-		z
-	};
+			label: "ADMIN_TAB_PLANTS",
+			desc: "ADMIN_TAB_PLANTS_DESC",
+			cards: [{
+				icon: "flask",
+				title: "ADMIN_C_PLANTS",
+				desc: "ADMIN_C_PLANTS_DESC",
+				fields: [
+					{
+						widget: "number",
+						path: "growMinutes",
+						label: "ADMIN_F_GROW",
+						min: 1,
+						max: 10080,
+						unit: "min"
+					},
+					{
+						widget: "number",
+						path: "rotMinutes",
+						label: "ADMIN_F_ROT",
+						hint: "ADMIN_H_ROT",
+						min: 1,
+						max: 10080,
+						unit: "min"
+					},
+					{
+						widget: "number",
+						path: "maxPlants",
+						label: "ADMIN_F_MAX_PLANTS",
+						hint: "ADMIN_H_MAX_PLANTS",
+						min: 0,
+						max: 100
+					},
+					{
+						widget: "number",
+						path: "budsMin",
+						label: "ADMIN_F_BUDS_MIN",
+						min: 1,
+						max: 100
+					},
+					{
+						widget: "number",
+						path: "budsMax",
+						label: "ADMIN_F_BUDS_MAX",
+						min: 1,
+						max: 100
+					},
+					{
+						widget: "text",
+						lookup: "item",
+						path: "seedItem",
+						label: "ADMIN_F_SEED_ITEM",
+						hint: "ADMIN_H_SEED_ITEM",
+						placeholder: "ADMIN_P_SEED_ITEM"
+					},
+					{
+						widget: "text",
+						lookup: "item",
+						path: "budItem",
+						label: "ADMIN_F_BUD_ITEM",
+						hint: "ADMIN_H_BUD_ITEM",
+						placeholder: "ADMIN_P_ITEM"
+					}
+				]
+			}]
+		},
+		{
+			id: "plantLook",
+			file: "plants",
+			icon: "flask",
+			label: "ADMIN_TAB_LOOK",
+			desc: "ADMIN_TAB_LOOK_DESC",
+			cards: [{
+				icon: "flask",
+				title: "ADMIN_C_LOOK",
+				desc: "ADMIN_C_LOOK_DESC",
+				fields: [
+					{
+						widget: "model",
+						kind: "object",
+						path: "models.small",
+						label: "ADMIN_F_MODEL_SMALL"
+					},
+					{
+						widget: "model",
+						kind: "object",
+						path: "models.medium",
+						label: "ADMIN_F_MODEL_MEDIUM"
+					},
+					{
+						widget: "model",
+						kind: "object",
+						path: "models.large",
+						label: "ADMIN_F_MODEL_LARGE"
+					},
+					{
+						widget: "number",
+						path: "drawDistance",
+						label: "ADMIN_F_DRAW",
+						hint: "ADMIN_H_DRAW",
+						min: 20,
+						max: 300,
+						unit: "m"
+					}
+				]
+			}]
+		}
+	]
+}, core = resourceExport("ai-core"), panel = new AdminPanel(drugsSchema), settings = panel.view("settings", readSettings), isPolice = (source) => {
+	let duty = online.dutyJob(source);
+	return duty !== null && settings.value.policeJobs.includes(duty);
+}, policeOnDuty = () => settings.value.policeJobs.reduce((sum, job) => sum + online.onDutyFor(job).size, 0), log$1 = createLogger(ResourceName), MINUTE = 6e4;
+function addTo(map, key, value) {
+	let set = map.get(key);
+	set ? set.add(value) : map.set(key, new Set([value]));
 }
-const isPolice = (source) => {
-	let duty = core.GetDutyJob(source);
-	return duty !== null && content.settings.policeJobs.includes(duty);
-}, policeOnDuty = () => content.settings.policeJobs.reduce((sum, job) => sum + core.GetOnDutyCount(job), 0), log$1 = createLogger(ResourceName), plants = new class {
+function removeFrom(map, key, value) {
+	let set = map.get(key);
+	set && (set.delete(value), set.size === 0 && map.delete(key));
+}
+const plants = new class {
 	byId = new Map();
 	cells = new Map();
+	byMinute = new Map();
 	owners = new Map();
-	watching = new Map();
+	pending = new Set();
+	watchers = new Map();
+	watching = new PlayerMap({ onDrop: (source, w) => this.forget(source, w.keys) });
+	swept = -Infinity;
 	async load() {
 		let rows = await mysql.query("SELECT id, owner, x, y, z, planted_at FROM ai_drugs_plants");
 		for (let r of rows) this.index({
@@ -15494,16 +15653,19 @@ const isPolice = (source) => {
 	}
 	index(plant) {
 		this.byId.set(plant.id, plant);
-		let { cx, cy } = cellOf(plant.x, plant.y), key = cellKey(cx, cy), cell = this.cells.get(key) ?? new Set();
-		cell.add(plant.id), this.cells.set(key, cell), this.owners.set(plant.owner, (this.owners.get(plant.owner) ?? 0) + 1);
+		let { cx, cy } = cellOf(plant.x, plant.y);
+		addTo(this.cells, cellKey(cx, cy), plant.id), addTo(this.byMinute, Math.floor(plant.plantedAt / MINUTE), plant.id), this.owners.set(plant.owner, (this.owners.get(plant.owner) ?? 0) + 1);
 	}
 	get(id) {
 		return this.byId.get(id);
 	}
 	ownedBy(owner) {
-		return this.owners.get(owner) ?? 0;
+		let count = this.owners.get(owner) ?? 0;
+		for (let spot of this.pending) spot.owner === owner && count++;
+		return count;
 	}
 	near(x, y, metres) {
+		for (let spot of this.pending) if (Math.hypot(spot.x - x, spot.y - y) < metres) return !0;
 		let { cx, cy } = cellOf(x, y);
 		for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let id of this.cells.get(cellKey(cx + dx, cy + dy)) ?? []) {
 			let p = this.byId.get(id);
@@ -15512,10 +15674,12 @@ const isPolice = (source) => {
 		return !1;
 	}
 	watch(source, cx, cy) {
-		let keys = new Set(), list = [];
+		let before = this.watching.get(source);
+		before && this.forget(source, before.keys);
+		let keys = [], list = [];
 		for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
 			let key = cellKey(cx + dx, cy + dy);
-			keys.add(key);
+			keys.push(key), addTo(this.watchers, key, source);
 			for (let id of this.cells.get(key) ?? []) {
 				let p = this.byId.get(id);
 				p && list.push({
@@ -15531,137 +15695,184 @@ const isPolice = (source) => {
 			cx,
 			cy,
 			keys
-		}), emitNet(EVENTS.snapshot, source, list, Date.now(), content.settings.growMinutes);
+		});
+		let args = [
+			list,
+			Date.now(),
+			settings.value.growMinutes
+		];
+		list.length > 50 ? TriggerLatentClientEvent(EVENTS.snapshot, source, 25e3, ...args) : emitNet(EVENTS.snapshot, source, ...args);
 	}
-	unwatch(source) {
-		this.watching.delete(source);
+	forget(source, keys) {
+		for (let key of keys) removeFrom(this.watchers, key, source);
 	}
-	watchers(plant) {
-		let { cx, cy } = cellOf(plant.x, plant.y), key = cellKey(cx, cy);
-		return [...this.watching].filter(([, w]) => w.keys.has(key)).map(([source]) => source);
-	}
-	async add(owner, x, y, z) {
-		let plantedAt = Date.now(), id = await mysql.insert("INSERT INTO ai_drugs_plants (owner, x, y, z, planted_at) VALUES (?, ?, ?, ?, FROM_UNIXTIME(? / 1000))", [
-			owner,
-			x,
-			y,
-			z,
-			plantedAt
-		]);
-		if (id === null) throw Error("plant insert returned no id");
-		let plant = {
-			id,
-			owner,
-			x,
-			y,
-			z,
-			plantedAt
-		};
-		this.index(plant);
-		let view = {
-			id: plant.id,
-			x,
-			y,
-			z,
-			plantedAt
-		};
-		for (let source of this.watchers(plant)) emitNet(EVENTS.put, source, view);
-	}
-	remove(id) {
-		let plant = this.byId.get(id);
-		if (!plant) return;
-		this.byId.delete(id);
+	watchersOf(plant) {
 		let { cx, cy } = cellOf(plant.x, plant.y);
-		this.cells.get(cellKey(cx, cy))?.delete(id);
-		let owned = (this.owners.get(plant.owner) ?? 1) - 1;
-		owned > 0 ? this.owners.set(plant.owner, owned) : this.owners.delete(plant.owner);
-		for (let source of this.watchers(plant)) emitNet(EVENTS.remove, source, id);
-		mysql.query("DELETE FROM ai_drugs_plants WHERE id = ?", [id]).catch((error) => log$1.error(`plant ${id} delete failed`, error));
+		return this.watchers.get(cellKey(cx, cy)) ?? new Set();
+	}
+	async add(spot, z) {
+		let plantedAt = Date.now();
+		try {
+			let id = await mysql.insert("INSERT INTO ai_drugs_plants (owner, x, y, z, planted_at) VALUES (?, ?, ?, ?, FROM_UNIXTIME(? / 1000))", [
+				spot.owner,
+				spot.x,
+				spot.y,
+				z,
+				plantedAt
+			]);
+			if (id === null) throw Error("plant insert returned no id");
+			let plant = {
+				id,
+				owner: spot.owner,
+				x: spot.x,
+				y: spot.y,
+				z,
+				plantedAt
+			};
+			this.index(plant);
+			let view = {
+				id,
+				x: spot.x,
+				y: spot.y,
+				z,
+				plantedAt
+			};
+			for (let source of this.watchersOf(plant)) emitNet(EVENTS.put, source, view);
+		} finally {
+			this.pending.delete(spot);
+		}
+	}
+	reserve(spot) {
+		this.pending.add(spot);
+	}
+	release(spot) {
+		this.pending.delete(spot);
+	}
+	remove(ids) {
+		let gone = [];
+		for (let id of ids) {
+			let plant = this.byId.get(id);
+			if (!plant) continue;
+			this.byId.delete(id);
+			let { cx, cy } = cellOf(plant.x, plant.y);
+			removeFrom(this.cells, cellKey(cx, cy), id), removeFrom(this.byMinute, Math.floor(plant.plantedAt / MINUTE), id);
+			let owned = (this.owners.get(plant.owner) ?? 1) - 1;
+			owned > 0 ? this.owners.set(plant.owner, owned) : this.owners.delete(plant.owner);
+			for (let source of this.watchersOf(plant)) emitNet(EVENTS.remove, source, id);
+			gone.push(id);
+		}
+		for (let i = 0; i < gone.length; i += 500) {
+			let chunk = gone.slice(i, i + 500);
+			mysql.query("DELETE FROM ai_drugs_plants WHERE id IN (?)", [chunk]).catch((error) => log$1.error(`delete of ${chunk.length} plants failed`, error));
+		}
 	}
 	rotten(now) {
-		let limit = (content.settings.growMinutes + content.settings.rotMinutes) * 6e4;
-		return [...this.byId.values()].filter((p) => now - p.plantedAt > limit).map((p) => p.id);
+		let s = settings.value, cutoff = Math.floor((now - (s.growMinutes + s.rotMinutes) * MINUTE) / MINUTE) - 1, out = [];
+		if (this.swept === -Infinity) for (let [minute, ids] of this.byMinute) minute <= cutoff && out.push(...ids);
+		else for (let minute = this.swept + 1; minute <= cutoff; minute++) out.push(...this.byMinute.get(minute) ?? []);
+		return this.swept = Math.max(this.swept, cutoff), out;
 	}
-}(), startPlants = () => plants.load().catch((error) => log$1.error("plants could not be loaded", error));
-setInterval(() => {
-	for (let id of plants.rotten(Date.now())) plants.remove(id);
-}, 6e4), onClientEvent(EVENTS.area, {
-	args: ([cx, cy]) => Number.isInteger(cx) && Number.isInteger(cy) ? [Number(cx), Number(cy)] : null,
+}(), startPlants = () => plants.load().then(() => setInterval(() => plants.remove(plants.rotten(Date.now())), MINUTE)).catch((error) => log$1.error("plants could not be loaded", error));
+onClientEvent(EVENTS.area, {
+	args: ([cx, cy]) => {
+		let x = readInt(cx, -1e3, 1e3), y = readInt(cy, -1e3, 1e3);
+		return x === null || y === null ? null : [x, y];
+	},
 	rate: {
 		count: 2,
 		windowMs: 1e3
 	}
 }, (source, cx, cy) => {
-	let p = pos(source), real = cellOf(p.x, p.y);
+	let p = coordsOf(source), real = cellOf(p.x, p.y);
 	Math.abs(real.cx - cx) > 1 || Math.abs(real.cy - cy) > 1 || plants.watch(source, cx, cy);
 });
 async function plantSeed(source) {
-	let ped = GetPlayerPed(String(source)), charId = core.GetCharacter(source)?.id;
+	let s = settings.value, ped = GetPlayerPed(String(source)), charId = online.character(source)?.id;
 	if (charId === void 0 || GetVehiclePedIsIn(ped, !1)) return;
-	let p = pos(source);
+	let p = coordsOf(source);
 	if (plants.near(p.x, p.y, 2)) return notify(source, Locale("DRUGS_ERR_TOO_CLOSE"), "error");
-	if (plants.ownedBy(charId) >= content.settings.maxPlants) return notify(source, Locale("DRUGS_ERR_MAX_PLANTS", content.settings.maxPlants), "error");
-	if (inventory.removeItem(source, "weed_seed", 1)) {
+	if (plants.ownedBy(charId) >= s.maxPlants) return notify(source, Locale("DRUGS_ERR_MAX_PLANTS", s.maxPlants), "error");
+	let spot = {
+		owner: charId,
+		x: p.x,
+		y: p.y
+	};
+	if (plants.reserve(spot), !inventory.removeItem(source, s.seedItem, 1)) plants.release(spot);
+	else {
 		try {
-			await plants.add(charId, p.x, p.y, p.z - 1);
+			await plants.add(spot, p.z - 1);
 		} catch (error) {
-			log$1.error("planting failed", error), inventory.addItem(source, "weed_seed", 1);
+			log$1.error("planting failed", error), inventory.addItem(source, s.seedItem, 1);
 			return;
 		}
-		notify(source, Locale("DRUGS_PLANTED", content.settings.growMinutes), "success"), aiLog("drugs", "planted weed", { source });
+		notify(source, Locale("DRUGS_PLANTED", s.growMinutes), "success"), aiLog("drugs", "planted weed", { source });
 	}
 }
 onClientCallback(EVENTS.harvest, {
-	args: ([id]) => asArgs(typeof id == "number" ? id : null),
+	args: oneArg(readId),
 	lock: !0
 }, (source, id) => {
 	let plant = plants.get(id);
 	if (!plant) return fail("DRUGS_ERR_GONE");
-	let p = pos(source);
-	if (Math.hypot(p.x - plant.x, p.y - plant.y, p.z - plant.z) > 3) return fail("DRUGS_ERR_FAR");
-	if (!(Date.now() - plant.plantedAt >= content.settings.growMinutes * 6e4)) return isPolice(source) ? (plants.remove(id), aiLog("drugs", "destroyed a plant", { source }), {
+	if (!isNear(source, plant, 3)) return fail("DRUGS_ERR_FAR");
+	let s = settings.value;
+	if (!(Date.now() - plant.plantedAt >= s.growMinutes * MINUTE)) return isPolice(source) ? (plants.remove([id]), aiLog("drugs", "destroyed a plant", { source }), {
 		ok: !0,
 		destroyed: !0
 	}) : fail("DRUGS_ERR_GROWING");
-	let s = content.settings, count = s.budsMin + Math.floor(Math.random() * (s.budsMax - s.budsMin + 1));
-	return inventory.addItem(source, "weed_bud", count) ? (plants.remove(id), aiLog("drugs", `harvested ${count} buds`, { source }), {
+	let count = s.budsMin + Math.floor(Math.random() * (s.budsMax - s.budsMin + 1));
+	return inventory.addItem(source, s.budItem, count) ? (plants.remove([id]), aiLog("drugs", `harvested ${count} buds`, { source }), {
 		ok: !0,
 		count
 	}) : fail("DRUGS_ERR_SPACE");
-}), inventory.registerUsableItem("weed_seed", (source) => (plantSeed(source), !1)), on("playerDropped", () => plants.unwatch(Number(globalThis.source)));
+});
+const seedItems = new Set();
+function registerSeed() {
+	let name = settings.value.seedItem;
+	seedItems.has(name) || (seedItems.add(name), inventory.registerUsableItem(name, (source) => (name === settings.value.seedItem && plantSeed(source), !1)));
+}
+registerSeed(), panel.onChange("settings", registerSeed);
 // resource/server/index.ts
 const log = createLogger(ResourceName);
 aiLogChannels({ drugs: {} }), createDatabaseTables(ResourceName, "sql/main.sql").then(startPlants).catch((error) => log.error("database setup failed", error));
-const nextSale = new Map();
-onClientCallback(EVENTS.sell, (source) => {
-	let s = content.settings, now = Date.now();
-	if ((nextSale.get(source) ?? 0) > now) return fail("DRUGS_ERR_WAIT");
+const nextSale = new Map(), servedBuyers = new Map();
+function prune(map, now) {
+	for (let [key, until] of map) until <= now && map.delete(key);
+}
+function buyerNear(source, netId) {
+	let ped = NetworkGetEntityFromNetworkId(netId);
+	return !ped || !DoesEntityExist(ped) || GetEntityType(ped) !== 1 || IsPedAPlayer(ped) || GetEntityHealth(ped) <= 0 ? 0 : isNear(source, entityCoords(ped), 3) ? ped : 0;
+}
+onClientCallback(EVENTS.sell, {
+	args: oneArg(readId),
+	lock: !0
+}, (source, buyerNetId) => {
+	let s = settings.value, now = Date.now(), charId = online.character(source)?.id;
+	if (charId === void 0) return fail("DRUGS_ERR_NOTHING");
+	if ((nextSale.get(charId) ?? 0) > now) return fail("DRUGS_ERR_WAIT");
+	let buyer = buyerNear(source, buyerNetId);
+	if (!buyer || (servedBuyers.get(buyer) ?? 0) > now) return fail("DRUGS_ERR_NO_BUYER");
 	if (policeOnDuty() < s.sellMinPolice) return fail("DRUGS_ERR_POLICE");
 	let drug = s.drugs.find((d) => inventory.getItemCount(source, d.name) > 0);
 	if (!drug) return fail("DRUGS_ERR_NOTHING");
-	if (nextSale.set(source, now + s.saleCooldown * 1e3), Math.random() * 100 < s.refuseChance) return fail("DRUGS_ERR_REFUSED");
+	if (prune(nextSale, now), prune(servedBuyers, now), nextSale.set(charId, now + s.saleCooldown * 1e3), servedBuyers.set(buyer, now + 6e5), Math.random() * 100 < s.refuseChance) return fail("DRUGS_ERR_REFUSED");
 	let count = Math.min(inventory.getItemCount(source, drug.name), 1 + Math.floor(Math.random() * 3)), price = (drug.min + Math.floor(Math.random() * (drug.max - drug.min + 1))) * count;
-	if (!inventory.removeItem(source, drug.name, count)) return fail("DRUGS_ERR_NOTHING");
-	if (core.AddMoney(source, s.account, price, "drugs:sale"), Math.random() * 100 < s.alertChance) {
-		let p = pos(source);
-		dispatch.alert({
-			code: "10-31",
-			title: Locale("DRUGS_ALERT"),
-			coords: p,
-			source,
-			icon: "cannabis",
-			blip: {
-				sprite: 51,
-				color: 1
-			}
-		});
-	}
-	return aiLog("drugs", `sold ${count} ${drug.name}`, {
+	return inventory.removeItem(source, drug.name, count) ? (core.AddMoney(source, s.account, price, "drugs:sale"), Math.random() * 100 < s.alertChance && dispatch.alert({
+		code: "10-31",
+		title: Locale("DRUGS_ALERT"),
+		coords: coordsOf(source),
+		source,
+		icon: "cannabis",
+		blip: {
+			sprite: 51,
+			color: 1
+		}
+	}), aiLog("drugs", `sold ${count} ${drug.name}`, {
 		source,
 		metadata: { price }
 	}), {
 		ok: !0,
 		count,
 		price
-	};
-}, { lock: !0 }), on("playerDropped", () => nextSale.delete(Number(globalThis.source)));
+	}) : fail("DRUGS_ERR_NOTHING");
+});

@@ -1,24 +1,26 @@
 import {
+  AdminWorld,
   cache,
-  loadLocaleTexts,
+  callAction,
   notify,
   onServerEvent,
   Points,
   progress,
   requestModel,
-  triggerServerCallback,
 } from "@aicore-fivem/lib/client";
-import { asArgs, record } from "@aicore-fivem/lib/shared";
+import { asArgs, readFinite, readId } from "@aicore-fivem/lib/shared";
 import { Locale } from "common";
-import { cellOf, EVENTS, growthOf, toPlant, type Plant } from "common/drugs";
+import {
+  cellOf,
+  EVENTS,
+  growthOf,
+  readLook,
+  toPlant,
+  type Plant,
+} from "common/drugs";
 
-const texts = loadLocaleTexts();
-const MODELS = [
-  "bkr_prop_weed_01_small_01c",
-  "bkr_prop_weed_med_01a",
-  "bkr_prop_weed_lrg_01a",
-];
-const DRAW_DISTANCE = 100;
+const world = new AdminWorld(["plants"]);
+const look = world.view("plants", readLook);
 
 /**
  * The plants around the player: the server sends the 3x3 cells when the player's cell changes, then puts and
@@ -56,11 +58,26 @@ class PlantView {
     for (const id of this.plants.keys()) this.remove(id);
     this.offset = serverNow - Date.now();
     this.growMinutes = growMinutes;
-    for (const plant of list) this.put(plant);
+    // One render for the whole list (a render per plant would walk every plant each time).
+    for (const plant of list) this.add(plant);
     void this.render();
   }
 
   put(plant: Plant): void {
+    this.add(plant);
+    void this.render();
+  }
+
+  /** Every prop goes again (the panel changed the models or the draw distance); the next render makes them. */
+  restyle(): void {
+    for (const entry of this.plants.values()) {
+      if (entry.object) DeleteObject(entry.object);
+      entry.object = 0;
+    }
+    void this.render();
+  }
+
+  private add(plant: Plant): void {
     this.remove(plant.id);
     this.plants.set(plant.id, { plant, object: 0, stage: -1 });
     this.points.add(String(plant.id), {
@@ -75,7 +92,6 @@ class PlantView {
       },
       onPressed: () => this.harvest(plant.id),
     });
-    void this.render();
   }
 
   remove(id: number): void {
@@ -91,10 +107,11 @@ class PlantView {
     // The growth text of the plant the player stands at follows the clock.
     this.points.refresh();
     const [x = 0, y = 0, z = 0] = GetEntityCoords(cache.ped, false);
+    const { models, drawDistance } = look.value;
     for (const entry of this.plants.values()) {
       const { plant } = entry;
       const near =
-        Math.hypot(plant.x - x, plant.y - y, plant.z - z) <= DRAW_DISTANCE;
+        Math.hypot(plant.x - x, plant.y - y, plant.z - z) <= drawDistance;
       const growth = growthOf(plant, this.now(), this.growMinutes);
       const stage = growth >= 1 ? 2 : growth >= 0.4 ? 1 : 0;
       if (entry.object && (!near || stage !== entry.stage)) {
@@ -102,7 +119,7 @@ class PlantView {
         entry.object = 0;
       }
       if (!near || entry.object) continue;
-      const model = await requestModel(MODELS[stage] ?? "").catch(() => 0);
+      const model = await requestModel(models[stage] ?? "").catch(() => 0);
       if (!model || !this.plants.has(plant.id) || entry.object) continue;
       entry.object = CreateObjectNoOffset(
         model,
@@ -127,39 +144,37 @@ class PlantView {
       anim: { dict: "amb@world_human_gardener_plant@male@base", clip: "base" },
     });
     if (!done) return;
-    const result = record(
-      await triggerServerCallback(EVENTS.harvest, [id]).catch(() => null),
-    );
-    if (result.ok !== true) {
-      const key =
-        typeof result.error === "string" ? result.error : "DRUGS_ERR_FAR";
-      return notify(texts[key] ?? key, "error");
-    }
+    const result = await callAction(EVENTS.harvest, [id], {
+      fallback: "DRUGS_ERR_FAR",
+    });
+    if (!result) return;
     notify(
       result.destroyed === true
         ? Locale("DRUGS_DESTROYED")
-        : Locale("DRUGS_HARVESTED", Number(result.count)),
+        : Locale("DRUGS_HARVESTED", readFinite(result.count) ?? 0),
       "success",
     );
   }
 }
 
 const view = new PlantView();
+world.onChange("plants", () => view.restyle());
 onServerEvent(
   EVENTS.snapshot,
   {
-    args: ([list, now, grow]): [Plant[], number, number] | null =>
-      Array.isArray(list) && typeof now === "number" && typeof grow === "number"
-        ? [list.flatMap((p) => toPlant(p) ?? []), now, grow]
-        : null,
+    args: ([list, now, grow]): [Plant[], number, number] | null => {
+      const serverNow = readFinite(now);
+      const minutes = readFinite(grow);
+      return Array.isArray(list) && serverNow !== null && minutes !== null
+        ? [list.flatMap((p) => toPlant(p) ?? []), serverNow, minutes]
+        : null;
+    },
   },
   (list, now, grow) => view.snapshot(list, now, grow),
 );
 onServerEvent(EVENTS.put, { args: ([p]) => asArgs(toPlant(p)) }, (plant) =>
   view.put(plant),
 );
-onServerEvent(
-  EVENTS.remove,
-  { args: ([id]) => asArgs(typeof id === "number" ? id : null) },
-  (id) => view.remove(id),
+onServerEvent(EVENTS.remove, { args: ([id]) => asArgs(readId(id)) }, (id) =>
+  view.remove(id),
 );

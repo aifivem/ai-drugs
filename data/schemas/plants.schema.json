@@ -1,0 +1,46 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ai-drugs/data/plants.json",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "This file's JSON Schema (for editors)."
+    },
+    "models": {
+      "type": "object",
+      "properties": {
+        "small": {
+          "description": "Young plant",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "medium": {
+          "description": "Growing plant",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "large": {
+          "description": "Ready plant",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        }
+      },
+      "required": [
+        "small",
+        "medium",
+        "large"
+      ]
+    },
+    "drawDistance": {
+      "description": "Draw distance: Plants further away than this have no prop.",
+      "type": "number",
+      "minimum": 20,
+      "maximum": 300
+    }
+  },
+  "required": []
+}

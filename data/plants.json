@@ -1,0 +1,9 @@
+{
+  "$schema": "./schemas/plants.schema.json",
+  "models": {
+    "small": "bkr_prop_weed_01_small_01c",
+    "medium": "bkr_prop_weed_med_01a",
+    "large": "bkr_prop_weed_lrg_01a"
+  },
+  "drawDistance": 100
+}

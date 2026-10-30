@@ -54,5 +54,20 @@
   "ADMIN_F_MAX_PLANTS": "Plants per character",
   "ADMIN_H_MAX_PLANTS": "How many plants one character can have at once.",
   "ADMIN_F_BUDS_MIN": "Buds from",
-  "ADMIN_F_BUDS_MAX": "Buds up to"
+  "ADMIN_F_BUDS_MAX": "Buds up to",
+  "ADMIN_F_SEED_ITEM": "Seed item",
+  "ADMIN_H_SEED_ITEM": "Using this item plants a weed plant.",
+  "ADMIN_P_SEED_ITEM": "weed_seed",
+  "ADMIN_F_BUD_ITEM": "Harvest item",
+  "ADMIN_H_BUD_ITEM": "A ready plant gives this item.",
+  "ADMIN_TAB_LOOK": "Plant look",
+  "ADMIN_TAB_LOOK_DESC": "The props players see while a plant grows.",
+  "ADMIN_C_LOOK": "Plant props",
+  "ADMIN_C_LOOK_DESC": "A growing plant shows the young prop, the growing one from 40%, the ready one when it can be harvested.",
+  "ADMIN_F_MODEL_SMALL": "Young plant",
+  "ADMIN_F_MODEL_MEDIUM": "Growing plant",
+  "ADMIN_F_MODEL_LARGE": "Ready plant",
+  "ADMIN_F_DRAW": "Draw distance",
+  "ADMIN_H_DRAW": "Plants further away than this have no prop.",
+  "DRUGS_ERR_NO_BUYER": "Nobody to sell to here"
 }

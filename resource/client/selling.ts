@@ -1,19 +1,18 @@
 import {
   cache,
+  callAction,
   hidePrompt,
-  loadLocaleTexts,
   notify,
   onPromptPressed,
-  optionalExport,
+  player,
+  radial,
   requestAnimDict,
   showPrompt,
-  triggerServerCallback,
 } from "@aicore-fivem/lib/client";
-import { record } from "@aicore-fivem/lib/shared";
+import { readFinite } from "@aicore-fivem/lib/shared";
 import { Locale } from "common";
 import { EVENTS } from "common/drugs";
 
-const texts = loadLocaleTexts();
 const PROMPT = "drugsale";
 
 const distanceTo = (entity: number) => {
@@ -37,6 +36,7 @@ class Selling {
       clearInterval(this.timer);
       this.timer = null;
       this.release();
+      this.asked.clear();
       return notify(Locale("DRUGS_SELLING_OFF"), "info", 2000);
     }
     this.timer = setInterval(() => this.step(), 1000);
@@ -69,6 +69,7 @@ class Selling {
         IsPedHuman(ped) &&
         !IsPedInAnyVehicle(ped, false) &&
         !IsPedDeadOrDying(ped, true) &&
+        NetworkGetEntityIsNetworked(ped) &&
         !this.asked.has(ped) &&
         distanceTo(ped) <= 25,
     );
@@ -94,29 +95,21 @@ class Selling {
   async sell(): Promise<void> {
     const buyer = this.buyer;
     if (!buyer) return;
-    const result = record(
-      await triggerServerCallback(EVENTS.sell, []).catch(() => null),
+    const result = await callAction(
+      EVENTS.sell,
+      [NetworkGetNetworkIdFromEntity(buyer)],
+      { fallback: "DRUGS_ERR_REFUSED" },
     );
-    if (
-      result.ok === true &&
-      typeof result.count === "number" &&
-      typeof result.price === "number"
-    ) {
+    const count = readFinite(result?.count);
+    const price = readFinite(result?.price);
+    if (count !== null && price !== null) {
       const dict = await requestAnimDict("mp_common");
       TaskTurnPedToFaceEntity(buyer, cache.ped, 800);
-      TaskPlayAnim(
-        cache.ped,
-        dict,
-        "givetake1_a",
-        8.0,
-        -8.0,
-        2000,
-        0,
-        0,
-        false,
-        false,
-        false,
-      );
+      void player.playAnim("mp_common", "givetake1_a", {
+        duration: 2000,
+        flag: 0,
+      });
+      // The buyer is a world ped, not the local player: its animation stays a plain task.
       TaskPlayAnim(
         buyer,
         dict,
@@ -130,11 +123,7 @@ class Selling {
         false,
         false,
       );
-      notify(Locale("DRUGS_SOLD", result.count, result.price), "success");
-    } else {
-      const key =
-        typeof result.error === "string" ? result.error : "DRUGS_ERR_REFUSED";
-      notify(texts[key] ?? key, "error");
+      notify(Locale("DRUGS_SOLD", count, price), "success");
     }
     setTimeout(() => this.release(), 2000);
   }
@@ -143,15 +132,9 @@ class Selling {
 const selling = new Selling();
 onPromptPressed((id) => id === PROMPT && void selling.sell());
 
-const addRadial = () =>
-  optionalExport("ai-radialmenu")?.AddItem({
-    id: "drugs_sell",
-    label: Locale("DRUGS_RADIAL"),
-    icon: "money-bill-wave",
-    onSelect: () => selling.toggle(),
-  });
-addRadial();
-on(
-  "onClientResourceStart",
-  (resource: string) => resource === "ai-radialmenu" && addRadial(),
-);
+radial.add({
+  id: "drugs_sell",
+  label: Locale("DRUGS_RADIAL"),
+  icon: "money-bill-wave",
+  onPressed: () => selling.toggle(),
+});

@@ -1,9 +1,16 @@
-import { int, num, record, str } from "@aicore-fivem/lib/shared";
+import {
+  int,
+  num,
+  readFinite,
+  readId,
+  record,
+  str,
+} from "@aicore-fivem/lib/shared";
 
 /** ai-drugs' contracts and panel content. No natives. */
 
 export const EVENTS = {
-  /** Callback: () -> { ok, item, count, price } sells to the stranger next to the player. */
+  /** Callback: (buyerNetId) -> { ok, count, price } sells to the stranger next to the player. */
   sell: "ai-drugs:sell",
   /** Client -> server: (cellX, cellY) the player's plant cell changed (snapshot of the 3x3 cells around it follows). */
   area: "ai-drugs:area",
@@ -36,13 +43,18 @@ export interface Plant {
 
 export function toPlant(v: unknown): Plant | null {
   const p = record(v);
-  return typeof p.id === "number" &&
-    typeof p.x === "number" &&
-    typeof p.y === "number" &&
-    typeof p.z === "number" &&
-    typeof p.plantedAt === "number"
-    ? { id: p.id, x: p.x, y: p.y, z: p.z, plantedAt: p.plantedAt }
-    : null;
+  const id = readId(p.id);
+  const x = readFinite(p.x);
+  const y = readFinite(p.y);
+  const z = readFinite(p.z);
+  const plantedAt = readFinite(p.plantedAt);
+  return id === null ||
+    x === null ||
+    y === null ||
+    z === null ||
+    plantedAt === null
+    ? null
+    : { id, x, y, z, plantedAt };
 }
 
 export interface Settings {
@@ -63,6 +75,9 @@ export interface Settings {
   maxPlants: number;
   budsMin: number;
   budsMax: number;
+  /** The usable item that plants, and the item a harvest gives. */
+  seedItem: string;
+  budItem: string;
 }
 
 export function readSettings(raw: unknown): Settings {
@@ -91,6 +106,39 @@ export function readSettings(raw: unknown): Settings {
     maxPlants: int(v.maxPlants, 5, 0, 100),
     budsMin,
     budsMax: Math.max(budsMin, int(v.budsMax, 8, 1, 100)),
+    seedItem: str(v.seedItem, "weed_seed", 48),
+    budItem: str(v.budItem, "weed_bud", 48),
+  };
+}
+
+/** What every client needs to draw plants (panel file `plants`, synced to everyone). */
+export interface PlantLook {
+  /** Prop per growth stage: small, medium, ready. */
+  models: [string, string, string];
+  /** Props exist only within this many metres. */
+  drawDistance: number;
+}
+
+export const DEFAULT_LOOK: PlantLook = {
+  models: [
+    "bkr_prop_weed_01_small_01c",
+    "bkr_prop_weed_med_01a",
+    "bkr_prop_weed_lrg_01a",
+  ],
+  drawDistance: 100,
+};
+
+export function readLook(raw: unknown): PlantLook {
+  const v = record(raw);
+  const m = record(v.models);
+  const [small, medium, large] = DEFAULT_LOOK.models;
+  return {
+    models: [
+      str(m.small, small, 64),
+      str(m.medium, medium, 64),
+      str(m.large, large, 64),
+    ],
+    drawDistance: num(v.drawDistance, DEFAULT_LOOK.drawDistance, 20, 300),
   };
 }
 

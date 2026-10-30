@@ -19,4 +19,5 @@ dependencies {
 
 files {
 	'locales/*.json',
+	'data/plants.json',
 }
