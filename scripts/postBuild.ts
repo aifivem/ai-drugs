@@ -132,6 +132,7 @@ export default async function () {
     fxClientScripts,
     fxServerScripts,
     fxImport,
+    fxLoadscreen,
     repository,
   }: typeof Package & {
     /** GitHub repository (`github:owner/repo`, a url or `{ url }`): written as `repository`, ai-core checks its releases. */
@@ -148,6 +149,8 @@ export default async function () {
     fxServerScripts?: string[];
     /** The bundles are for other resources to load (`client_script '@name/dist/client.js'`), not run here. */
     fxImport?: boolean;
+    /** The web page is the loading screen (`loadscreen`, closed by the game script), not the `ui_page`. */
+    fxLoadscreen?: boolean;
   } = JSON.parse(await readFile("./package.json", "utf8"));
 
   // public/ is optional: static files players may download, copied to dist/.
@@ -183,7 +186,14 @@ export default async function () {
 game 'gta5'
 node_version '22'
 
-${scripts("client", hasClient && !fxImport, fxClientScripts)}${scripts("server", hasServer && !fxImport, fxServerScripts)}${web ? `ui_page 'dist/web/index.html'` : ``}
+${scripts("client", hasClient && !fxImport, fxClientScripts)}${scripts("server", hasServer && !fxImport, fxServerScripts)}${
+    web
+      ? fxLoadscreen
+        ? `loadscreen 'dist/web/index.html'
+loadscreen_manual_shutdown 'yes'`
+        : `ui_page 'dist/web/index.html'`
+      : ``
+  }
 ${reduceArray("dependencies", fxDependencies)}${reduceArray("files", files)}${(
     fxProvide ?? []
   )
