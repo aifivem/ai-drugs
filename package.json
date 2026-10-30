@@ -16,7 +16,7 @@
     "lint": "oxlint --ignore-pattern \"dist/**\"",
     "format": "oxfmt",
     "dev": "bun tsdown -- --watch",
-    "build": "bun tsdown -- && aicore-client-errors dist/client.js",
+    "build": "aicore-db-types && bun tsdown -- && aicore-client-errors dist/client.js",
     "typecheck": "tsc --noEmit -p resource/client/tsconfig.json && tsc --noEmit -p resource/server/tsconfig.json"
   },
   "dependencies": {
