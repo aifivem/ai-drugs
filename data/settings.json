@@ -9,19 +9,19 @@
   "saleCooldown": 10,
   "drugs": [
     {
-      "name": "weed_bud",
+      "max": 80,
       "min": 40,
-      "max": 80
+      "name": "weed_bud"
     },
     {
-      "name": "coke_baggy",
+      "max": 160,
       "min": 90,
-      "max": 160
+      "name": "coke_baggy"
     },
     {
-      "name": "meth_baggy",
+      "max": 200,
       "min": 120,
-      "max": 200
+      "name": "meth_baggy"
     }
   ],
   "growMinutes": 60,
