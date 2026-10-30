@@ -10,6 +10,7 @@ import {
   KeyedCooldowns,
   onClientCallback,
   online,
+  pedFromNet,
 } from "@aicore-fivem/lib/server";
 import { createLogger, fail, oneArg, readId } from "@aicore-fivem/lib/shared";
 import { Locale, ResourceName } from "common";
@@ -33,15 +34,8 @@ const BUYER_MS = 10 * 60_000;
 
 /** The stranger the client brought: a live ambient ped (not a player) within 3 m. */
 function buyerNear(source: number, netId: number): number {
-  const ped = NetworkGetEntityFromNetworkId(netId);
-  if (
-    !ped ||
-    !DoesEntityExist(ped) ||
-    GetEntityType(ped) !== 1 ||
-    IsPedAPlayer(ped) ||
-    GetEntityHealth(ped) <= 0
-  )
-    return 0;
+  const ped = pedFromNet(netId);
+  if (!ped || IsPedAPlayer(ped) || GetEntityHealth(ped) <= 0) return 0;
   return isNear(source, entityCoords(ped), 3) ? ped : 0;
 }
 
