@@ -556,6 +556,9 @@ var AdminPanel = class {
 		let data = this.data.get(file);
 		data && (key === void 0 ? isRecord(value) && this.data.set(file, clone(value)) : value === null ? delete data[key] : data[key] = clone(value), this.changed(file, key));
 	}
+	linked(spec, value) {
+		return spec.type === "text" && spec.records && typeof value == "string" && value !== "" && !(value in this.get(spec.records)) ? "ADMIN_ERR_LOOKUP" : null;
+	}
 	check(patch, spec) {
 		let data = this.get(patch.file);
 		if (patch.action === "create") return spec.kind !== "records" || !new RegExp(spec.keyPattern ?? DEFAULT_KEY).test(patch.key) ? ERR.pattern : patch.key in data ? "ADMIN_ERR_EXISTS" : null;
@@ -569,6 +572,8 @@ var AdminPanel = class {
 				for (let [name, section] of Object.entries(spec.sections)) {
 					let refusal = validate(section, record[name], name);
 					if (refusal) return refusal.error;
+					let link = this.linked(section, record[name]);
+					if (link) return link;
 				}
 				let ruled = this.rules.get(patch.file)?.(key, record);
 				if (ruled) return ruled;
@@ -579,6 +584,8 @@ var AdminPanel = class {
 		if (!section || spec.kind === "records" && (!patch.key || !(patch.key in data))) return ERR.type;
 		let refusal = validate(section, patch.value, patch.section);
 		if (refusal) return refusal.error;
+		let link = this.linked(section, patch.value);
+		if (link) return link;
 		let current = spec.kind === "records" ? data[patch.key ?? ""] : data, next = {
 			...isRecord(current) ? current : {},
 			[patch.section]: patch.value
