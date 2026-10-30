@@ -7,7 +7,9 @@ const config: Record<string, UserConfig> = {
     outExtensions() {
       return { js: ".js" };
     },
-    minify: false,
+    // Maps sit next to the bundles but are never listed in `files` (players cannot download them); ai-core maps
+    // client error stacks back to the source with them.
+    sourcemap: "hidden",
     outputOptions: {
       entryFileNames: "[name].js",
     },
@@ -24,15 +26,21 @@ const config: Record<string, UserConfig> = {
     platform: "browser",
     target: "es2023",
     format: "iife",
+    minify: true,
   },
 
   server: {
     platform: "node",
     format: "cjs",
+    // Comments and dead code go; names and lines stay, so FXServer's error lines stay readable without a map.
+    minify: { compress: true, mangle: false, codegen: { removeWhitespace: false } },
+    // Readable as it is; a map would only add a large committed file nothing reads.
+    sourcemap: false,
     outputOptions: {
       // FXServer runs server scripts inside a CommonJS wrapper whose `exports` parameter shadows the
       // FiveM `exports` function; our exports need the global one.
       banner: "exports = globalThis.exports;",
+      comments: false,
     },
     plugins: [
       {
@@ -42,10 +50,14 @@ const config: Record<string, UserConfig> = {
         transform(code: string, id: string) {
           if (!id.replaceAll("\\", "/").endsWith("mysql2/lib/helpers.js"))
             return null;
-          return code.replace(
-            /require\(`cardinal\$\{REQUIRE_TERMINATOR\}`\)/,
-            '(() => { throw new Error("cardinal disabled"); })()',
-          );
+          // map null: the one-line swap moves nothing the source map needs.
+          return {
+            code: code.replace(
+              /require\(`cardinal\$\{REQUIRE_TERMINATOR\}`\)/,
+              '(() => { throw new Error("cardinal disabled"); })()',
+            ),
+            map: null,
+          };
         },
       },
     ],
