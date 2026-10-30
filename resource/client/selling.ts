@@ -1,6 +1,7 @@
 import {
   cache,
   callAction,
+  every,
   hidePrompt,
   notify,
   onPromptPressed,
@@ -26,20 +27,22 @@ const distanceTo = (entity: number) => {
  * shows the sell prompt when they arrive; the server decides the sale.
  */
 class Selling {
-  private timer: ReturnType<typeof setInterval> | null = null;
+  private readonly job = every(1000, () => this.step(), {
+    active: false,
+    name: "selling",
+  });
   private buyer = 0;
   private prompt = false;
   private readonly asked = new Set<number>();
 
   toggle(): void {
-    if (this.timer) {
-      clearInterval(this.timer);
-      this.timer = null;
+    if (this.job.running) {
+      this.job.set(false);
       this.release();
       this.asked.clear();
       return notify(Locale("DRUGS_SELLING_OFF"), "info", 2000);
     }
-    this.timer = setInterval(() => this.step(), 1000);
+    this.job.set(true);
     notify(Locale("DRUGS_SELLING_ON"), "info", 3000);
   }
 

@@ -1,6 +1,7 @@
 import {
   aiLog,
   coordsOf,
+  every,
   inventory,
   isNear,
   notify,
@@ -251,7 +252,9 @@ export const startPlants = () =>
   plants
     .load()
     .then(() =>
-      setInterval(() => plants.remove(plants.rotten(Date.now())), MINUTE),
+      every(MINUTE, () => plants.remove(plants.rotten(Date.now())), {
+        name: "plantRot",
+      }),
     )
     .catch((error: unknown) => log.error("plants could not be loaded", error));
 

@@ -1,8 +1,6 @@
+import { spec } from "@aicore-fivem/lib/shared";
 import type { PanelSchema } from "@aicore-fivem/shared";
 import { DEFAULT_LOOK } from "common/drugs";
-
-const int = (min: number, max: number) =>
-  ({ type: "number", min, max, integer: true }) as const;
 
 /** ai-drugs' panel: street sales and weed plants (server only), and the plant props every client draws. */
 export const drugsSchema: PanelSchema = {
@@ -21,10 +19,10 @@ export const drugsSchema: PanelSchema = {
           pattern: "^[a-z0-9_]{2,32}$",
         },
         account: { type: "text", lookup: "account", min: 2, max: 32 },
-        sellMinPolice: int(0, 32),
-        alertChance: int(0, 100),
-        refuseChance: int(0, 100),
-        saleCooldown: int(1, 600),
+        sellMinPolice: spec.int(0, 32),
+        alertChance: spec.int(0, 100),
+        refuseChance: spec.int(0, 100),
+        saleCooldown: spec.int(1, 600),
         drugs: {
           type: "list",
           max: 30,
@@ -38,16 +36,16 @@ export const drugsSchema: PanelSchema = {
                 max: 48,
                 pattern: "^[a-z0-9_]{2,48}$",
               },
-              min: int(0, 1_000_000),
-              max: int(0, 1_000_000),
+              min: spec.int(0, 1_000_000),
+              max: spec.int(0, 1_000_000),
             },
           },
         },
-        growMinutes: int(1, 10_080),
-        rotMinutes: int(1, 10_080),
-        maxPlants: int(0, 100),
-        budsMin: int(1, 100),
-        budsMax: int(1, 100),
+        growMinutes: spec.int(1, 10_080),
+        rotMinutes: spec.int(1, 10_080),
+        maxPlants: spec.int(0, 100),
+        budsMin: spec.int(1, 100),
+        budsMax: spec.int(1, 100),
         seedItem: { type: "text", lookup: "item", min: 2, max: 48 },
         budItem: { type: "text", lookup: "item", min: 2, max: 48 },
       },

@@ -2,6 +2,7 @@ import {
   AdminWorld,
   cache,
   callAction,
+  every,
   notify,
   onServerEvent,
   Points,
@@ -37,8 +38,8 @@ class PlantView {
   private cell = "";
 
   constructor() {
-    setInterval(() => this.watchCell(), 2000);
-    setInterval(() => void this.render(), 5000);
+    every(2000, () => this.watchCell(), { name: "plantCell" });
+    every(5000, () => this.render(), { name: "plantRender" });
   }
 
   private now(): number {

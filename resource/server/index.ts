@@ -7,6 +7,7 @@ import {
   entityCoords,
   inventory,
   isNear,
+  KeyedCooldowns,
   onClientCallback,
   online,
 } from "@aicore-fivem/lib/server";
@@ -24,19 +25,11 @@ createDatabaseTables(ResourceName, "sql/main.sql")
   .then(startPlants)
   .catch((error: unknown) => log.error("database setup failed", error));
 
-/**
- * When each character may sell again (Date.now), kept by character id so a reconnect does not reset it; expired
- * entries go on the next sale.
- */
-const nextSale = new Map<number, number>();
-/** Strangers who bought lately (entity -> until): one ped buys once, not every cooldown. */
-const servedBuyers = new Map<number, number>();
+/** When each character may sell again, by character id so a reconnect does not reset it. */
+const saleCooldowns = new KeyedCooldowns();
+/** Strangers who bought lately (by entity): one ped buys once, not every cooldown. */
+const servedBuyers = new KeyedCooldowns();
 const BUYER_MS = 10 * 60_000;
-
-/** Drops expired entries of a deadline map. */
-function prune(map: Map<number, number>, now: number): void {
-  for (const [key, until] of map) if (until <= now) map.delete(key);
-}
 
 /** The stranger the client brought: a live ambient ped (not a player) within 3 m. */
 function buyerNear(source: number, netId: number): number {
@@ -62,22 +55,19 @@ onClientCallback(
   { args: oneArg(readId), lock: true },
   (source, buyerNetId) => {
     const s = settings.value;
-    const now = Date.now();
     const charId = online.character(source)?.id;
     if (charId === undefined) return fail("DRUGS_ERR_NOTHING");
-    if ((nextSale.get(charId) ?? 0) > now) return fail("DRUGS_ERR_WAIT");
+    if (!saleCooldowns.ready(charId)) return fail("DRUGS_ERR_WAIT");
     const buyer = buyerNear(source, buyerNetId);
-    if (!buyer || (servedBuyers.get(buyer) ?? 0) > now)
+    if (!buyer || !servedBuyers.ready(buyer))
       return fail("DRUGS_ERR_NO_BUYER");
     if (policeOnDuty() < s.sellMinPolice) return fail("DRUGS_ERR_POLICE");
     const drug = s.drugs.find(
       (d) => inventory.getItemCount(source, d.name) > 0,
     );
     if (!drug) return fail("DRUGS_ERR_NOTHING");
-    prune(nextSale, now);
-    prune(servedBuyers, now);
-    nextSale.set(charId, now + s.saleCooldown * 1000);
-    servedBuyers.set(buyer, now + BUYER_MS);
+    saleCooldowns.start(charId, s.saleCooldown * 1000);
+    servedBuyers.start(buyer, BUYER_MS);
     if (Math.random() * 100 < s.refuseChance) return fail("DRUGS_ERR_REFUSED");
     const count = Math.min(
       inventory.getItemCount(source, drug.name),
