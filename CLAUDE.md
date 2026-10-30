@@ -1,6 +1,6 @@
 # ai-drugs
 
-Street sales to strangers (switched on from the radial menu) and weed plants that grow outside, persist in the DB and are streamed to nearby players. Depends on ai-core (money, characters, duty, prompts, progress); uses the active inventory through ai-core's inventory layer (lib `inventory`), ai-police (`SendAlert`) and ai-radialmenu.
+Street sales to strangers (switched on from the radial menu) and weed plants that grow outside, persist in the DB and are streamed to nearby players. Depends on ai-core (money, characters, duty, prompts, progress); uses the active inventory through ai-core's inventory layer (lib `inventory`), police alerts through lib `dispatch` and ai-radialmenu.
 
 ## Decisions
 

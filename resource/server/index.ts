@@ -2,9 +2,9 @@ import {
   aiLog,
   aiLogChannels,
   createDatabaseTables,
+  dispatch,
   inventory,
   onClientCallback,
-  optionalExport,
 } from "@aicore-fivem/lib/server";
 import { createLogger } from "@aicore-fivem/lib/shared";
 import { Locale, ResourceName } from "common";
@@ -52,12 +52,14 @@ onClientCallback(
     core.AddMoney(source, s.account, price, "drugs:sale");
     if (Math.random() * 100 < s.alertChance) {
       const p = pos(source);
-      optionalExport("ai-police")?.SendAlert(
-        p.x,
-        p.y,
-        p.z,
-        Locale("DRUGS_ALERT"),
-      );
+      dispatch.alert({
+        code: "10-31",
+        title: Locale("DRUGS_ALERT"),
+        coords: p,
+        source,
+        icon: "cannabis",
+        blip: { sprite: 51, color: 1 },
+      });
     }
     aiLog("drugs", `sold ${count} ${drug.name}`, {
       source,
