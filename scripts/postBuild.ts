@@ -3,7 +3,7 @@ import { cp, readFile, writeFile, access } from "node:fs/promises";
 import fg from "fast-glob";
 import { dirname, extname } from "node:path";
 import type Package from "../package.json";
-import { waitFor } from "@overextended/core/utils";
+import { setTimeout as sleep } from "node:timers/promises";
 
 /** `github:owner/repo`, `git+https://github.com/owner/repo.git` or `{ url }` -> `https://github.com/owner/repo`. */
 function repositoryUrl(
@@ -62,6 +62,17 @@ async function generateDirectoryGlobs(root: string, useRoot = false) {
   });
 }
 
+/** The web bundle's file globs once vite has written them (it may still be building); undefined after 20 minutes. */
+async function webGlobs(): Promise<string[] | undefined> {
+  const end = Date.now() + 1_200_000;
+  while (Date.now() < end) {
+    const web = await generateDirectoryGlobs("dist/web", true);
+    if (web.length) return web;
+    await sleep(500);
+  }
+  return undefined;
+}
+
 /** `client_script 'dist/client.js'`, or a `client_scripts` block when extra scripts follow the bundle. */
 function scripts(
   side: "client" | "server",
@@ -104,6 +115,7 @@ export default async function () {
     fxVersion,
     fxClientScripts,
     fxServerScripts,
+    fxImport,
     repository,
   }: typeof Package & {
     /** GitHub repository (`github:owner/repo`, a url or `{ url }`): written as `repository`, ai-core checks its releases. */
@@ -118,6 +130,8 @@ export default async function () {
     /** Extra scripts loaded after the bundle on each side (ai-core's Lua bridge). */
     fxClientScripts?: string[];
     fxServerScripts?: string[];
+    /** The bundles are for other resources to load (`client_script '@name/dist/client.js'`), not run here. */
+    fxImport?: boolean;
   } = JSON.parse(await readFile("./package.json", "utf8"));
 
   // public/ is optional: static files players may download, copied to dist/.
@@ -128,20 +142,14 @@ export default async function () {
   try {
     await access("./web");
 
-    web = await waitFor(
-      async () => {
-        const web = await generateDirectoryGlobs("dist/web", true);
-
-        return web.length ? web : null;
-      },
-      { interval: 500, timeout: 1200000 },
-    );
+    web = await webGlobs();
   } catch {}
 
   if (web) files.push(...web);
 
   files.unshift("locales/*.json");
   if (fxFiles) files.push(...fxFiles);
+  if (fxImport && hasClient) files.push("dist/client.js");
 
   let body = Object.entries({
     name,
@@ -159,7 +167,7 @@ export default async function () {
 game 'gta5'
 node_version '22'
 
-${scripts("client", hasClient, fxClientScripts)}${scripts("server", hasServer, fxServerScripts)}${web ? `ui_page 'dist/web/index.html'` : ``}
+${scripts("client", hasClient && !fxImport, fxClientScripts)}${scripts("server", hasServer && !fxImport, fxServerScripts)}${web ? `ui_page 'dist/web/index.html'` : ``}
 ${reduceArray("dependencies", fxDependencies)}${reduceArray("files", files)}${(
     fxProvide ?? []
   )

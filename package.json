@@ -29,7 +29,6 @@
     "@aicore-fivem/build": "^0.1.0",
     "@citizenfx/client": "latest",
     "@citizenfx/server": "latest",
-    "@overextended/core": "^0.3.1",
     "@types/bun": "latest",
     "@types/node": "^22",
     "fast-glob": "^3.3.3",
