@@ -1,0 +1,32 @@
+{
+  "policeJobs": [
+    "police"
+  ],
+  "account": "cash",
+  "sellMinPolice": 0,
+  "alertChance": 20,
+  "refuseChance": 20,
+  "saleCooldown": 10,
+  "drugs": [
+    {
+      "name": "weed_bud",
+      "min": 40,
+      "max": 80
+    },
+    {
+      "name": "coke_baggy",
+      "min": 90,
+      "max": 160
+    },
+    {
+      "name": "meth_baggy",
+      "min": 120,
+      "max": 200
+    }
+  ],
+  "growMinutes": 60,
+  "rotMinutes": 120,
+  "maxPlants": 5,
+  "budsMin": 3,
+  "budsMax": 8
+}
