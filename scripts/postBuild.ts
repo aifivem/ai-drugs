@@ -5,6 +5,13 @@ import { dirname, extname } from "node:path";
 import type Package from "../package.json";
 import { waitFor } from "@overextended/core/utils";
 
+/** `github:owner/repo`, `git+https://github.com/owner/repo.git` or `{ url }` -> `https://github.com/owner/repo`. */
+function repositoryUrl(value: string | { url?: string } | undefined): string | undefined {
+  const raw = typeof value === "string" ? value : value?.url;
+  const match = raw?.match(/^(?:github:|(?:git\+)?https:\/\/github\.com\/)([\w.-]+\/[\w.-]+?)(?:\.git)?$/);
+  return match ? `https://github.com/${match[1]}` : undefined;
+}
+
 function reduceArray(name: string, files?: string[]): string {
   return files?.[0]
     ? `\n${name} {${files.reduce((acc, value) => {
@@ -93,7 +100,10 @@ export default async function () {
     fxVersion,
     fxClientScripts,
     fxServerScripts,
+    repository,
   }: typeof Package & {
+    /** GitHub repository (`github:owner/repo`, a url or `{ url }`): written as `repository`, ai-core checks its releases. */
+    repository?: string | { url?: string };
     fxDependencies?: string[];
     /** Manifest version when it must differ from the package version (a stand-in reporting the version it mirrors). */
     fxVersion?: string;
@@ -135,6 +145,7 @@ export default async function () {
     version: fxVersion ?? version,
     license,
     description,
+    repository: repositoryUrl(repository),
   }).reduce(
     (acc, [key, value]) => (value ? `${acc}${key} '${value}'\n` : acc),
     "",

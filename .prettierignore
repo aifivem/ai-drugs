@@ -4,7 +4,7 @@ build
 fxmanifest.lua
 *.lua
 sql
-data/*.json
+data
 resource/server/tables.ts
 bun.lock
 *.md

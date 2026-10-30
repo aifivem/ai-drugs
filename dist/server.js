@@ -31,21 +31,66 @@ var SourceLock = class {
 	release(source) {
 		this.hits.delete(source);
 	}
-}, DataFile = class {
+};
+// ../../../packages/lib/src/shared/read.ts
+function num(value, fallback, min = -Infinity, max = Infinity) {
+	return typeof value == "number" && Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback;
+}
+function int$1(value, fallback, min = -Infinity, max = Infinity) {
+	return Math.round(num(value, fallback, min, max));
+}
+function str(value, fallback, max = 64) {
+	return typeof value == "string" && value.trim() ? value.trim().slice(0, max) : fallback;
+}
+function record(value) {
+	return typeof value == "object" && value && !Array.isArray(value) ? value : {};
+}
+// ../../../packages/lib/src/shared/index.ts
+function isRecord(value) {
+	return typeof value == "object" && !!value && !Array.isArray(value);
+}
+function logSafe(text, max) {
+	return text.replace(/\r?\n/g, " | ").replace(/[\u0000-\u001f\u007f]/g, "").replace(/\^\d/g, "").slice(0, max);
+}
+function formatText(template, args) {
+	return template.replace(/\{(\d+)\}/g, (match, index) => {
+		let value = args[Number(index)];
+		return value === void 0 ? match : String(value);
+	});
+}
+const asArgs = (value) => value === null ? null : [value];
+function createLogger(resource) {
+	let prefix = `[${resource}]`;
+	return {
+		info: (message, ...details) => console.log(`${prefix} ${message}`, ...details),
+		warn: (message, ...details) => console.warn(`${prefix} ^3${message}^7`, ...details),
+		error: (message, ...details) => console.error(`${prefix} ^1${message}^7`, ...details)
+	};
+}
+function withoutSchemaKey(value) {
+	if (!isRecord(value) || !("$schema" in value)) return value;
+	let { $schema: _schema, ...rest } = value;
+	return rest;
+}
+var DataFile = class {
 	resource;
 	name;
 	log;
 	writes = Promise.resolve();
 	pending = void 0;
 	timer = null;
+	schemaRef = null;
 	constructor(resource, name, log) {
 		this.resource = resource, this.name = name, this.log = log;
+	}
+	hasSchemaRef() {
+		return (LoadResourceFile(this.resource, this.path) ?? "").includes("\"$schema\"");
 	}
 	read() {
 		for (let path of [this.path, `${this.path}.bak`]) {
 			let raw = LoadResourceFile(this.resource, path);
 			if (raw) try {
-				return JSON.parse(raw);
+				return withoutSchemaKey(JSON.parse(raw));
 			} catch (error) {
 				this.log.error(`${this.resource}/${path} is not valid JSON${path === this.path ? ", trying the backup" : ""}`, error);
 			}
@@ -55,7 +100,10 @@ var SourceLock = class {
 	write(value) {
 		this.pending = value, this.timer ||= setTimeout(() => {
 			this.timer = null;
-			let text = `${JSON.stringify(this.pending, null, 2)}\n`;
+			let data = this.schemaRef && isRecord(this.pending) ? {
+				$schema: this.schemaRef,
+				...this.pending
+			} : this.pending, text = `${JSON.stringify(data, null, 2)}\n`;
 			this.writes = this.writes.then(() => this.flush(text)).catch((error) => this.log.error(`saving ${this.resource}/${this.path} failed`, error));
 		}, 250);
 	}
@@ -107,41 +155,6 @@ const CORE = {
 	worldEvent: (resource) => `${resource}:admin:world`,
 	worldChangesCallback: (resource) => `${resource}:admin:worldChanges`
 };
-// ../../../packages/lib/src/shared/read.ts
-function num(value, fallback, min = -Infinity, max = Infinity) {
-	return typeof value == "number" && Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback;
-}
-function int$1(value, fallback, min = -Infinity, max = Infinity) {
-	return Math.round(num(value, fallback, min, max));
-}
-function str(value, fallback, max = 64) {
-	return typeof value == "string" && value.trim() ? value.trim().slice(0, max) : fallback;
-}
-function record(value) {
-	return typeof value == "object" && value && !Array.isArray(value) ? value : {};
-}
-// ../../../packages/lib/src/shared/index.ts
-function isRecord(value) {
-	return typeof value == "object" && !!value && !Array.isArray(value);
-}
-function logSafe(text, max) {
-	return text.replace(/\r?\n/g, " | ").replace(/[\u0000-\u001f\u007f]/g, "").replace(/\^\d/g, "").slice(0, max);
-}
-function formatText(template, args) {
-	return template.replace(/\{(\d+)\}/g, (match, index) => {
-		let value = args[Number(index)];
-		return value === void 0 ? match : String(value);
-	});
-}
-const asArgs = (value) => value === null ? null : [value];
-function createLogger(resource) {
-	let prefix = `[${resource}]`;
-	return {
-		info: (message, ...details) => console.log(`${prefix} ${message}`, ...details),
-		warn: (message, ...details) => console.warn(`${prefix} ^3${message}^7`, ...details),
-		error: (message, ...details) => console.error(`${prefix} ^1${message}^7`, ...details)
-	};
-}
 // ../../../packages/lib/src/fivem/exports.ts
 function registerExport(name, handler) {
 	globalThis.exports(name, handler);
@@ -341,6 +354,134 @@ function validate(spec, value, path) {
 		default: return spec;
 	}
 }
+// ../../../packages/lib/src/server/admin/jsonSchema.ts
+const SCHEMA_KEY = {
+	type: "string",
+	description: "This file's JSON Schema (for editors)."
+};
+function texts(resource) {
+	try {
+		let raw = JSON.parse(LoadResourceFile(resource, "locales/en.json") ?? "{}");
+		return isRecord(raw) ? Object.fromEntries(Object.entries(raw).filter((e) => typeof e[1] == "string")) : {};
+	} catch {
+		return {};
+	}
+}
+function collect(fields, prefix, lang, out) {
+	for (let field of fields) {
+		let path = prefix + field.path, label = lang[field.label] ?? field.label, hint = field.hint ? lang[field.hint] ?? field.hint : "";
+		out.has(path) || out.set(path, hint ? `${label}: ${hint}` : label), field.widget === "list" && collect(field.rows, `${path}[].`, lang, out);
+	}
+}
+function describe(schema, file, lang) {
+	let out = new Map();
+	for (let tab of schema.tabs) if (tab.file === file) for (let card of tab.cards) collect(card.fields, "", lang, out);
+	return out;
+}
+function toJson(spec, path, desc) {
+	let description = desc.get(path), base = description ? { description } : {};
+	switch (spec.type) {
+		case "text": return {
+			...base,
+			type: "string",
+			minLength: spec.min,
+			maxLength: spec.max,
+			pattern: spec.pattern
+		};
+		case "number": return {
+			...base,
+			type: spec.integer ? "integer" : "number",
+			minimum: spec.min,
+			maximum: spec.max
+		};
+		case "bool": return {
+			...base,
+			type: "boolean"
+		};
+		case "enum": return {
+			...base,
+			enum: spec.values
+		};
+		case "names": return {
+			...base,
+			type: "array",
+			maxItems: spec.max,
+			uniqueItems: !0,
+			items: {
+				type: "string",
+				maxLength: spec.itemMax,
+				pattern: spec.pattern
+			}
+		};
+		case "vec3":
+		case "vec4": {
+			let keys = spec.type === "vec3" ? [
+				"x",
+				"y",
+				"z"
+			] : [
+				"x",
+				"y",
+				"z",
+				"heading"
+			];
+			return {
+				...base,
+				type: "object",
+				required: keys,
+				properties: Object.fromEntries(keys.map((k) => [k, { type: "number" }]))
+			};
+		}
+		case "object": return {
+			...base,
+			...objectOf(spec.fields, path ? `${path}.` : "", desc)
+		};
+		case "list": return {
+			...base,
+			type: "array",
+			minItems: spec.min,
+			maxItems: spec.max,
+			items: toJson(spec.of, `${path}[]`, desc)
+		};
+		default: return spec;
+	}
+}
+function objectOf(fields, prefix, desc) {
+	return {
+		type: "object",
+		properties: Object.fromEntries(Object.entries(fields).map(([k, s]) => [k, toJson(s, prefix + k, desc)])),
+		required: Object.entries(fields).filter(([, s]) => !s.optional).map(([k]) => k)
+	};
+}
+function fileSchema(resource, schema, name, spec) {
+	let desc = describe(schema, name, texts(resource)), title = `${resource}/data/${name}.json`, body = spec.kind === "settings" ? (() => {
+		let obj = objectOf(spec.sections, "", desc), required = obj.required.filter((k) => !(k in (spec.defaults ?? {})));
+		return {
+			...obj,
+			properties: {
+				$schema: SCHEMA_KEY,
+				...obj.properties
+			},
+			required
+		};
+	})() : {
+		type: "object",
+		properties: { $schema: SCHEMA_KEY },
+		patternProperties: { [spec.keyPattern ?? "^[a-z0-9_]{2,32}$"]: objectOf(spec.sections, "", desc) },
+		additionalProperties: !1
+	};
+	return `${JSON.stringify({
+		$schema: "http://json-schema.org/draft-07/schema#",
+		title,
+		...body
+	}, null, 2)}\n`;
+}
+function writeSchema(resource, name, text, log) {
+	let path = `data/schemas/${name}.schema.json`;
+	if (LoadResourceFile(resource, path) === text) return;
+	let dir = `${GetResourcePath(resource)}/data/schemas`;
+	(0, node_fs_promises.mkdir)(dir, { recursive: !0 }).then(() => (0, node_fs_promises.writeFile)(`${dir}/${name}.schema.json`, text, "utf8")).catch((error) => log.error(`writing ${resource}/${path} failed`, error));
+}
 // ../../../packages/lib/src/server/admin/panel.ts
 const core$5 = resourceExport(CORE.resource);
 var AdminPanel = class {
@@ -436,10 +577,10 @@ var AdminPanel = class {
 			return;
 		}
 		let file = new DataFile(this.resource, name, this.log);
-		this.dataFiles.set(name, file);
+		this.dataFiles.set(name, file), file.schemaRef = `./schemas/${name}.schema.json`, writeSchema(this.resource, name, fileSchema(this.resource, this.schema, name, spec), this.log);
 		let raw = file.read(), data = isRecord(raw) ? raw : {}, filled = !1;
 		if (spec.kind === "settings") for (let [section, value] of Object.entries(spec.defaults ?? {})) section in data || (data[section] = clone(value), filled = !0);
-		this.data.set(name, data), (filled || raw === null) && file.write(data);
+		this.data.set(name, data), (filled || raw === null || !file.hasSchemaRef()) && file.write(data);
 	}
 };
 // ../../../packages/lib/src/server/log.ts

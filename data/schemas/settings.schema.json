@@ -1,0 +1,130 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ai-drugs/data/settings.json",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "This file's JSON Schema (for editors)."
+    },
+    "policeJobs": {
+      "description": "Police jobs: On-duty members count as police and can destroy plants.",
+      "type": "array",
+      "maxItems": 10,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "maxLength": 32,
+        "pattern": "^[a-z0-9_]{2,32}$"
+      }
+    },
+    "account": {
+      "description": "Money account: Sale money goes to this account.",
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 32
+    },
+    "sellMinPolice": {
+      "description": "Police needed",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 32
+    },
+    "alertChance": {
+      "description": "Police alert chance: Chance that a sale alerts on-duty police.",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "refuseChance": {
+      "description": "Refuse chance",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "saleCooldown": {
+      "description": "Time between sales: One player cannot sell more often than this.",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 600
+    },
+    "drugs": {
+      "description": "Drugs",
+      "type": "array",
+      "maxItems": 30,
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "description": "Item",
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 48,
+            "pattern": "^[a-z0-9_]{2,48}$"
+          },
+          "min": {
+            "description": "Price from",
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000
+          },
+          "max": {
+            "description": "Price up to",
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000
+          }
+        },
+        "required": [
+          "name",
+          "min",
+          "max"
+        ]
+      }
+    },
+    "growMinutes": {
+      "description": "Growing time",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10080
+    },
+    "rotMinutes": {
+      "description": "Rots after: A ready plant nobody harvests disappears after this long.",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10080
+    },
+    "maxPlants": {
+      "description": "Plants per character: How many plants one character can have at once.",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "budsMin": {
+      "description": "Buds from",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100
+    },
+    "budsMax": {
+      "description": "Buds up to",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100
+    }
+  },
+  "required": [
+    "policeJobs",
+    "account",
+    "sellMinPolice",
+    "alertChance",
+    "refuseChance",
+    "saleCooldown",
+    "drugs",
+    "growMinutes",
+    "rotMinutes",
+    "maxPlants",
+    "budsMin",
+    "budsMax"
+  ]
+}

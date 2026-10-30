@@ -7,6 +7,7 @@
   "author": {
     "name": "ai-core"
   },
+  "repository": "github:TGIANN/ai-drugs",
   "type": "module",
   "fxDependencies": [
     "/onesync",
