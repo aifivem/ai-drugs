@@ -1,4 +1,4 @@
-import { cache, hidePrompt, loadLocaleTexts, notify, onPromptPressed, onServerEvent, progress, requestModel, showPrompt, triggerServerCallback, Zones } from "@aicore-fivem/lib/client";
+import { cache, loadLocaleTexts, notify, onServerEvent, Points, progress, requestModel, triggerServerCallback } from "@aicore-fivem/lib/client";
 import { asArgs, record } from "@aicore-fivem/lib/shared";
 import { Locale } from "common";
 import { cellOf, EVENTS, growthOf, toPlant, type Plant } from "common/drugs";
@@ -13,7 +13,7 @@ const DRAW_DISTANCE = 100;
  */
 class PlantView {
   private readonly plants = new Map<number, { plant: Plant; object: number; stage: number }>();
-  private readonly zones = new Zones();
+  private readonly points = new Points();
   private offset = 0;
   private growMinutes = 60;
   private cell = "";
@@ -47,15 +47,15 @@ class PlantView {
   put(plant: Plant): void {
     this.remove(plant.id);
     this.plants.set(plant.id, { plant, object: 0, stage: -1 });
-    const id = `plant:${plant.id}`;
-    this.zones.add(id, {
-      shape: { type: "sphere", center: plant, radius: 1.5 },
-      interval: 500,
-      onEnter: () => {
+    this.points.add(String(plant.id), {
+      coords: plant,
+      radius: 1.5,
+      icon: "seedling",
+      label: () => {
         const growth = growthOf(plant, this.now(), this.growMinutes);
-        showPrompt(id, growth >= 1 ? Locale("DRUGS_PROMPT_HARVEST") : Locale("DRUGS_PROMPT_GROWING", Math.floor(growth * 100)));
+        return growth >= 1 ? Locale("DRUGS_PROMPT_HARVEST") : Locale("DRUGS_PROMPT_GROWING", Math.floor(growth * 100));
       },
-      onExit: () => hidePrompt(id),
+      onPressed: () => this.harvest(plant.id),
     });
     void this.render();
   }
@@ -65,12 +65,13 @@ class PlantView {
     if (!entry) return;
     if (entry.object) DeleteObject(entry.object);
     this.plants.delete(id);
-    this.zones.remove(`plant:${id}`);
-    hidePrompt(`plant:${id}`);
+    this.points.remove(String(id));
   }
 
   /** Props only within draw distance, swapped when a plant reaches its next stage. */
   private async render(): Promise<void> {
+    // The growth text of the plant the player stands at follows the clock.
+    this.points.refresh();
     const [x = 0, y = 0, z = 0] = GetEntityCoords(cache.ped, false);
     for (const entry of this.plants.values()) {
       const { plant } = entry;
@@ -115,6 +116,3 @@ onServerEvent(
 );
 onServerEvent(EVENTS.put, { args: ([p]) => asArgs(toPlant(p)) }, (plant) => view.put(plant));
 onServerEvent(EVENTS.remove, { args: ([id]) => asArgs(typeof id === "number" ? id : null) }, (id) => view.remove(id));
-onPromptPressed((prompt) => {
-  if (prompt.startsWith("plant:")) void view.harvest(Number(prompt.slice(6)));
-});

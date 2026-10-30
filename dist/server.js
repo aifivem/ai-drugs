@@ -144,6 +144,10 @@ const CORE = {
 	clientPromptPressedEvent: "ai-core:client:promptPressed",
 	/** (key: keyof PlayerCache, value) a cached value of the local player changed (one watcher in ai-core for every resource). */
 	clientCacheEvent: "ai-core:client:cache",
+	/** Server -> client callback: (model: string) the `CreateVehicleServerSetter` type of a model, null when the game has no such vehicle (ai-core's client answers for every resource, lib `spawnVehicle`). */
+	vehicleTypeCallback: "ai-core:vehicleType",
+	/** GlobalState: "prompt" | "target", how lib `Points` let players interact (ai-core panel setting). */
+	interactionStateKey: "ai:interaction",
 	charactersCallback: "ai-core:characters",
 	createCharacterCallback: "ai-core:createCharacter",
 	deleteCharacterCallback: "ai-core:deleteCharacter",
@@ -287,6 +291,7 @@ const requestEvent = (name) => `aicore:cb:${name}`;
 const responseEvent = (resource) => `aicore:cbr:${resource}`;
 
 // ../../../packages/lib/src/server/gate.ts
+const core$7 = resourceExport(CORE.resource);
 const log$6 = createLogger(GetCurrentResourceName());
 /** Every gate of this resource; one playerDropped listener frees them all (one listener per gate trips Node's limit). */
 const gates = /* @__PURE__ */ new Set();
@@ -401,6 +406,7 @@ function toPatch(value) {
 const clone = (value) => value === void 0 ? value : JSON.parse(JSON.stringify(value));
 
 // ../../../packages/lib/src/server/admin/validate.ts
+const core$6 = resourceExport(CORE.resource);
 /** Lang keys of the generic refusals (ai-core's locales). */
 const ERR = {
 	type: "ADMIN_ERR_TYPE",
@@ -418,7 +424,7 @@ var LookupCache = class {
 		if (cached && Date.now() - cached.at < 2e3) return cached.values.size > 0 ? cached.values : null;
 		let list = [];
 		try {
-			list = resourceExport(CORE.resource).GetLookupValues(source);
+			list = core$6.GetLookupValues(source);
 		} catch {}
 		const values = new Set(Array.isArray(list) ? list.filter((v) => typeof v === "string") : []);
 		this.lists.set(source, {
@@ -501,6 +507,7 @@ function validate(spec, value, path) {
 }
 
 // ../../../packages/lib/src/server/admin/panel.ts
+const core$5 = resourceExport(CORE.resource);
 const DEFAULT_KEY = "^[a-z0-9_]{2,32}$";
 /**
 * A resource's panel content: loads `data/<file>.json` once, keeps it in memory, validates every panel edit against
@@ -523,7 +530,7 @@ var AdminPanel = class {
 		registerExport("AdminPanelSnapshot", () => this.snapshot());
 		registerExport("AdminPanelApply", (admin, patch) => this.apply(admin, patch));
 		onClientCallback(ADMIN.worldChangesCallback(this.resource), () => Object.fromEntries(this.worldChanges));
-		setImmediate(() => resourceExport(CORE.resource).RegisterAdminPanel(this.resource));
+		setImmediate(() => core$5.RegisterAdminPanel(this.resource));
 	}
 	/** The current content of a file: the settings object, or `{ key: record }`. Read only. */
 	get(file) {
@@ -618,7 +625,7 @@ var AdminPanel = class {
 		const value = key === void 0 ? data : data[key] ?? null;
 		this.dataFiles.get(file)?.write(data);
 		for (const handler of this.handlers.get(file) ?? []) handler(key, value);
-		resourceExport(CORE.resource).AdminPanelChanged({
+		core$5.AdminPanelChanged({
 			resource: this.resource,
 			file,
 			key,
@@ -677,7 +684,7 @@ function notify(source, text, kind = "info", duration) {
 }
 
 // ../../../packages/lib/src/server/inventory.ts
-const core$1 = () => resourceExport(CORE.resource);
+const core$4 = resourceExport(CORE.resource);
 /**
 * Items through ai-core's inventory layer: the active inventory (ai-inventory, or another the panel picks) answers.
 * `inv` is a player server id or another inventory's id (stash name, plate). Calls fail (false / 0 / empty) while
@@ -685,30 +692,31 @@ const core$1 = () => resourceExport(CORE.resource);
 */
 const inventory = {
 	/** Gives items; false when they do not fit or the item does not exist. */
-	addItem: (inv, item, count = 1, metadata, slot) => core$1().AddItem(inv, item, count, metadata, slot),
+	addItem: (inv, item, count = 1, metadata, slot) => core$4.AddItem(inv, item, count, metadata, slot),
 	/** Takes items; false when there are not enough. */
-	removeItem: (inv, item, count = 1, metadata, slot) => core$1().RemoveItem(inv, item, count, metadata, slot),
+	removeItem: (inv, item, count = 1, metadata, slot) => core$4.RemoveItem(inv, item, count, metadata, slot),
 	/** How many of an item an inventory holds (stacks with matching metadata only when given). */
-	getItemCount: (inv, item, metadata) => core$1().GetItemCount(inv, item, metadata),
+	getItemCount: (inv, item, metadata) => core$4.GetItemCount(inv, item, metadata),
 	/** Whether an inventory holds at least `count` of an item. */
-	hasItem: (inv, item, count = 1) => core$1().HasItem(inv, item, count),
+	hasItem: (inv, item, count = 1) => core$4.HasItem(inv, item, count),
 	/** Whether the items would fit (weight and space). */
-	canCarryItem: (inv, item, count = 1, metadata) => core$1().CanCarryItem(inv, item, count, metadata),
+	canCarryItem: (inv, item, count = 1, metadata) => core$4.CanCarryItem(inv, item, count, metadata),
 	/** Every stack of an inventory with its item label. */
-	getItems: (inv) => core$1().GetItems(inv),
+	getItems: (inv) => core$4.GetItems(inv),
 	/** Empties an inventory. */
-	clearInventory: (inv) => core$1().ClearInventory(inv),
+	clearInventory: (inv) => core$4.ClearInventory(inv),
 	/** Registers a stash (`jobs` empty: everyone may open it); ai-core registers it again with any inventory that starts later. */
-	registerStash: (name, label, slots, maxWeight, jobs = []) => core$1().RegisterStash(name, label, slots, maxWeight, jobs),
+	registerStash: (name, label, slots, maxWeight, jobs = []) => core$4.RegisterStash(name, label, slots, maxWeight, jobs),
 	/** Opens a stash or another player's inventory on the player's screen, without range checks (check before). */
-	openInventory: (source, inv) => core$1().OpenInventory(source, inv),
+	openInventory: (source, inv) => core$4.OpenInventory(source, inv),
 	/** Runs `handler` when a player uses the item; register once at start, ai-core keeps it across inventory restarts. */
-	registerUsableItem: (name, handler) => core$1().RegisterUsableItem(name, handler),
+	registerUsableItem: (name, handler) => core$4.RegisterUsableItem(name, handler),
 	/** An item's label, weight and flags; null when the inventory does not know it. */
-	getItemDefinition: (name) => core$1().GetItemDefinition(name)
+	getItemDefinition: (name) => core$4.GetItemDefinition(name)
 };
 
 // ../../../packages/lib/src/server/online.ts
+const core$3 = resourceExport(CORE.resource);
 /**
 * This resource's mirror of ai-core's loaded players: characters, job and gang names and duty, read once from ai-core's
 * exports on first use and then kept by its local events. Hot paths (every chat message, every alert) read it
@@ -721,10 +729,9 @@ var OnlinePlayers = class {
 	start() {
 		if (this.started) return;
 		this.started = true;
-		const core = resourceExport(CORE.resource);
 		const load = (source, character) => {
-			this.put(source, character, (core.GetJobs(source) ?? []).map((m) => m.job), (core.GetGangs(source) ?? []).map((m) => m.gang));
-			this.setDuty(source, core.GetDutyJob(source));
+			this.put(source, character, (core$3.GetJobs(source) ?? []).map((m) => m.job), (core$3.GetGangs(source) ?? []).map((m) => m.gang));
+			this.setDuty(source, core$3.GetDutyJob(source));
 		};
 		on(CORE.playerLoadedEvent, load);
 		on(CORE.playerUnloadedEvent, (source) => this.drop(source));
@@ -737,8 +744,8 @@ var OnlinePlayers = class {
 			if (player) player.gangs = gangs.map((m) => m.gang);
 		});
 		on(CORE.dutyChangedEvent, (source, job) => this.setDuty(source, job));
-		for (const source of core.GetLoadedSources()) {
-			const character = core.GetCharacter(source);
+		for (const source of core$3.GetLoadedSources()) {
+			const character = core$3.GetCharacter(source);
 			if (character) load(source, character);
 		}
 	}
@@ -798,76 +805,21 @@ var OnlinePlayers = class {
 	/** Players on duty for a job (a live set: copy before awaiting). */
 	onDutyFor(job) {
 		this.start();
-		return this.onDuty.get(job) ?? EMPTY$1;
-	}
-};
-const EMPTY$1 = /* @__PURE__ */ new Set();
-const online = new OnlinePlayers();
-
-// ../../../packages/lib/src/server/proximity.ts
-/**
-* Who is near whom without scanning every player: OneSync tells the server which players are in each other's scope
-* (`playerEnteredScope` / `playerLeftScope`, ~424 m). A "near" question only measures the few players in scope
-* instead of all 10k online. Players already in scope when the resource starts are found once from a 424 m grid.
-*/
-const SCOPE_RADIUS = 424;
-const posOf = (source) => {
-	const [x = 0, y = 0, z = 0] = GetEntityCoords(GetPlayerPed(String(source)));
-	return {
-		x,
-		y,
-		z
-	};
-};
-var Scopes = class {
-	scopes = /* @__PURE__ */ new Map();
-	started = false;
-	link(a, b) {
-		let set = this.scopes.get(a);
-		if (!set) this.scopes.set(a, set = /* @__PURE__ */ new Set());
-		set.add(b);
-	}
-	start() {
-		if (this.started) return;
-		this.started = true;
-		on("playerEnteredScope", (data) => this.link(Number(data.for), Number(data.player)));
-		on("playerLeftScope", (data) => this.scopes.get(Number(data.for))?.delete(Number(data.player)));
-		on("playerDropped", () => {
-			const source = Number(globalThis.source);
-			for (const other of this.scopes.get(source) ?? []) this.scopes.get(other)?.delete(source);
-			this.scopes.delete(source);
-		});
-		this.seed();
-	}
-	/** The players in scope of each other right now: a grid of scope-sized cells, each player against 9 cells. */
-	seed() {
-		const cells = /* @__PURE__ */ new Map();
-		const all = [];
-		for (let i = 0; i < GetNumPlayerIndices(); i++) {
-			const source = Number(GetPlayerFromIndex(i));
-			const entry = {
-				source,
-				p: posOf(source)
-			};
-			all.push(entry);
-			const key = `${Math.floor(entry.p.x / SCOPE_RADIUS)}:${Math.floor(entry.p.y / SCOPE_RADIUS)}`;
-			const cell = cells.get(key);
-			if (cell) cell.push(entry);
-			else cells.set(key, [entry]);
-		}
-		for (const { source, p } of all) {
-			const cx = Math.floor(p.x / SCOPE_RADIUS);
-			const cy = Math.floor(p.y / SCOPE_RADIUS);
-			for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (const other of cells.get(`${cx + dx}:${cy + dy}`) ?? []) if (other.source !== source && Math.hypot(other.p.x - p.x, other.p.y - p.y) <= SCOPE_RADIUS) this.link(source, other.source);
-		}
-	}
-	of(source) {
-		this.start();
-		return this.scopes.get(source) ?? EMPTY;
+		return this.onDuty.get(job) ?? EMPTY;
 	}
 };
 const EMPTY = /* @__PURE__ */ new Set();
-const scopes = new Scopes();
+const online = new OnlinePlayers();
+
+// ../../../packages/lib/src/server/vehicleKeys.ts
+const core$2 = resourceExport(CORE.resource);
+
+// ../../../packages/lib/src/server/proximity.ts
+/**
+* Who is near whom without scanning every player: ai-core keeps which players are in each other's OneSync scope
+* (~424 m, one set of scope handlers for the whole server); a "near" question measures only those few players.
+*/
+const core$1 = resourceExport(CORE.resource);
 
 // ../../../packages/lib/src/server/command.ts
 const resource$3 = GetCurrentResourceName();
