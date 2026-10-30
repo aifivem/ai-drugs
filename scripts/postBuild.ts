@@ -25,10 +25,13 @@ function reduceArray(name: string, files?: string[]): string {
 }
 
 async function generateDirectoryGlobs(root: string, useRoot = false) {
-  const files = await fg("**/*", {
-    cwd: root,
-    onlyFiles: true,
-  });
+  // Sorted: the file system's order changes between builds and would reorder the manifest for nothing.
+  const files = (
+    await fg("**/*", {
+      cwd: root,
+      onlyFiles: true,
+    })
+  ).sort();
 
   const groups = new Map<string, Set<string>>();
 
