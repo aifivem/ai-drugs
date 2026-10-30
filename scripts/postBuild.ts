@@ -6,9 +6,13 @@ import type Package from "../package.json";
 import { waitFor } from "@overextended/core/utils";
 
 /** `github:owner/repo`, `git+https://github.com/owner/repo.git` or `{ url }` -> `https://github.com/owner/repo`. */
-function repositoryUrl(value: string | { url?: string } | undefined): string | undefined {
+function repositoryUrl(
+  value: string | { url?: string } | undefined,
+): string | undefined {
   const raw = typeof value === "string" ? value : value?.url;
-  const match = raw?.match(/^(?:github:|(?:git\+)?https:\/\/github\.com\/)([\w.-]+\/[\w.-]+?)(?:\.git)?$/);
+  const match = raw?.match(
+    /^(?:github:|(?:git\+)?https:\/\/github\.com\/)([\w.-]+\/[\w.-]+?)(?:\.git)?$/,
+  );
   return match ? `https://github.com/${match[1]}` : undefined;
 }
 

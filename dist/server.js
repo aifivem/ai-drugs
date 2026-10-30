@@ -136,6 +136,7 @@ const CORE = {
 	clientCharacterLookEvent: "ai-core:client:characterLook",
 	clientPromptPressedEvent: "ai-core:client:promptPressed",
 	clientCacheEvent: "ai-core:client:cache",
+	clientHudVisibleEvent: "ai-core:client:hudVisible",
 	vehicleTypeCallback: "ai-core:vehicleType",
 	interactionStateKey: "ai:interaction",
 	charactersCallback: "ai-core:characters",

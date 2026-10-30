@@ -33,7 +33,11 @@ const config: Record<string, UserConfig> = {
     platform: "node",
     format: "cjs",
     // Comments and dead code go; names and lines stay, so FXServer's error lines stay readable without a map.
-    minify: { compress: true, mangle: false, codegen: { removeWhitespace: false } },
+    minify: {
+      compress: true,
+      mangle: false,
+      codegen: { removeWhitespace: false },
+    },
     // Readable as it is; a map would only add a large committed file nothing reads.
     sourcemap: false,
     outputOptions: {
