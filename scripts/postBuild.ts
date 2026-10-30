@@ -51,6 +51,18 @@ async function generateDirectoryGlobs(root: string, useRoot = false) {
   });
 }
 
+/** `client_script 'dist/client.js'`, or a `client_scripts` block when extra scripts follow the bundle. */
+function scripts(side: "client" | "server", bundle: boolean, extra?: string[]): string {
+  const list = [...(bundle ? [`dist/${side}.js`] : []), ...(extra ?? [])];
+  if (list.length === 0) return "";
+  if (list.length === 1) return `${side}_script '${list[0]}'
+`;
+  return `${side}_scripts {${list.map((file) => `
+	'${file}',`).join("")}
+}
+`;
+}
+
 let buildCount = 0;
 let fxmanifest = "";
 
@@ -60,7 +72,7 @@ export default async function () {
   const hasServer = existsSync("./resource/server/index.ts");
   if (++buildCount < Number(hasClient) + Number(hasServer)) return;
 
-  const { name, author, version, license, description, fxDependencies, fxProvide, fxFiles, fxVersion }: typeof Package & {
+  const { name, author, version, license, description, fxDependencies, fxProvide, fxFiles, fxVersion, fxClientScripts, fxServerScripts }: typeof Package & {
     fxDependencies?: string[];
     /** Manifest version when it must differ from the package version (a stand-in reporting the version it mirrors). */
     fxVersion?: string;
@@ -68,6 +80,9 @@ export default async function () {
     fxProvide?: string[];
     /** Extra files outside public/ that clients may download or other resources include (`@name/path`). */
     fxFiles?: string[];
+    /** Extra scripts loaded after the bundle on each side (ai-core's Lua bridge). */
+    fxClientScripts?: string[];
+    fxServerScripts?: string[];
   } = JSON.parse(await readFile("./package.json", "utf8"));
 
   // public/ is optional: static files players may download, copied to dist/.
@@ -105,9 +120,7 @@ export default async function () {
 game 'gta5'
 node_version '22'
 
-${hasClient ? `client_script 'dist/client.js'
-` : ``}${hasServer ? `server_script 'dist/server.js'
-` : ``}${web ? `ui_page 'dist/web/index.html'` : ``}
+${scripts("client", hasClient, fxClientScripts)}${scripts("server", hasServer, fxServerScripts)}${web ? `ui_page 'dist/web/index.html'` : ``}
 ${reduceArray("dependencies", fxDependencies)}${reduceArray("files", files)}${(fxProvide ?? []).map((n) => `provide '${n}'
 `).join("")}`;
 
