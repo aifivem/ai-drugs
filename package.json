@@ -21,12 +21,12 @@
     "typecheck": "tsc --noEmit -p resource/client/tsconfig.json && tsc --noEmit -p resource/server/tsconfig.json"
   },
   "dependencies": {
-    "@aicore-fivem/lib": "^0.1.0",
-    "@aicore-fivem/shared": "^0.1.0",
-    "@aicore-fivem/mysql": "^0.1.0"
+    "@aicore-fivem/lib": "workspace:*",
+    "@aicore-fivem/shared": "workspace:*",
+    "@aicore-fivem/mysql": "workspace:*"
   },
   "devDependencies": {
-    "@aicore-fivem/build": "^0.1.0",
+    "@aicore-fivem/build": "workspace:*",
     "@citizenfx/client": "latest",
     "@citizenfx/server": "latest",
     "@types/bun": "latest",
