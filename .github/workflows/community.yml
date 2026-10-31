@@ -1,0 +1,19 @@
+# Issues and pull requests are mirrored to the Discord forums: see aifivem/.github.
+name: community
+
+on:
+  issues:
+    types: [opened, closed, reopened]
+  issue_comment:
+    types: [created]
+  pull_request_target:
+    types: [opened, closed]
+
+permissions:
+  issues: write
+  pull-requests: read
+
+jobs:
+  community:
+    uses: aifivem/.github/.github/workflows/community.yml@main
+    secrets: inherit
