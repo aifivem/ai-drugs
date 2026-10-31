@@ -280,7 +280,8 @@ const CORE = {
 	cancelProgressEvent: "ai-lib:client:cancelProgress",
 	progressForCallback: "ai-lib:progressFor",
 	progressForCancelEvent: "ai-lib:client:progressForCancel",
-	minigameForCallback: "ai-lib:minigameFor"
+	minigameForCallback: "ai-lib:minigameFor",
+	zoneEvent: "ai-lib:client:zone"
 }, named = new Set();
 function registerExport(name, handler) {
 	named.add(name), globalThis.exports(name, handler);
