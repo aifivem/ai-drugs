@@ -7,7 +7,7 @@
   "author": {
     "name": "TGIANN"
   },
-  "repository": "github:TGIANN/ai-drugs",
+  "repository": "github:aifivem/ai-drugs",
   "type": "module",
   "fxDependencies": [
     "/onesync",
