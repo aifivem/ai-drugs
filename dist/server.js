@@ -229,6 +229,7 @@ const CORE = {
 	resource: "ai-core",
 	clientErrorEvent: "ai-core:clientError",
 	playerLoadedEvent: "ai-core:playerLoaded",
+	playerSpawnedEvent: "ai-core:playerSpawned",
 	playerUnloadedEvent: "ai-core:playerUnloaded",
 	moneyChangedEvent: "ai-core:moneyChanged",
 	jobsChangedEvent: "ai-core:jobsChanged",
