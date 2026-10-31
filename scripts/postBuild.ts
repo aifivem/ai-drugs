@@ -178,7 +178,11 @@ export default async function () {
     description,
     repository: repositoryUrl(repository),
   }).reduce(
-    (acc, [key, value]) => (value ? `${acc}${key} '${value}'\n` : acc),
+    (acc, [key, value]) =>
+      value
+        ? // release-please bumps the line it marks; a stand-in's mirrored version stays as written.
+          `${acc}${key} '${value}'${key === "version" && !fxVersion ? " -- x-release-please-version" : ""}\n`
+        : acc,
     "",
   );
 
