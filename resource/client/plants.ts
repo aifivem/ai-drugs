@@ -4,13 +4,11 @@ import {
   cache,
   callAction,
   every,
-  notify,
   onServerEvent,
   Points,
-  progress,
   requestModel,
 } from "@aicore-fivem/lib/client";
-import { readFinite, readId } from "@aicore-fivem/lib/shared";
+import { readFinite, readId, ServerClock } from "@aicore-fivem/lib/shared";
 import { Locale } from "common";
 import {
   CELL,
@@ -34,17 +32,17 @@ class PlantView {
     { plant: Plant; object: number; stage: number }
   >();
   private readonly points = new Points();
-  private offset = 0;
+  private readonly clock = new ServerClock();
   private growMinutes = 60;
   private readonly follower = new AreaFollower(EVENTS.area, CELL);
+  /** Stage swaps run only while plants are known. */
+  private readonly renderJob = every(5000, () => this.render(), {
+    active: false,
+    name: "plantRender",
+  });
 
   constructor() {
     this.follower.start();
-    every(5000, () => this.render(), { name: "plantRender" });
-  }
-
-  private now(): number {
-    return Date.now() + this.offset;
   }
 
   /** The server's area message: a reset replaces every plant; the clock and growth time come with each. */
@@ -57,7 +55,7 @@ class PlantView {
   ): void {
     if (reset) for (const id of this.plants.keys()) this.remove(id);
     for (const id of removes) this.remove(id);
-    this.offset = serverNow - Date.now();
+    this.clock.sync(serverNow);
     this.growMinutes = growMinutes;
     // One render for the whole list (a render per plant would walk every plant each time).
     for (const plant of puts) this.add(plant);
@@ -76,12 +74,13 @@ class PlantView {
   private add(plant: Plant): void {
     this.remove(plant.id);
     this.plants.set(plant.id, { plant, object: 0, stage: -1 });
+    this.renderJob.set(true);
     this.points.add(String(plant.id), {
       coords: plant,
       radius: 1.5,
       icon: "seedling",
       label: () => {
-        const growth = growthOf(plant, this.now(), this.growMinutes);
+        const growth = growthOf(plant, this.clock.now(), this.growMinutes);
         return growth >= 1
           ? Locale("DRUGS_PROMPT_HARVEST")
           : Locale("DRUGS_PROMPT_GROWING", Math.floor(growth * 100));
@@ -96,6 +95,7 @@ class PlantView {
     if (entry.object) DeleteObject(entry.object);
     this.plants.delete(id);
     this.points.remove(String(id));
+    if (this.plants.size === 0) this.renderJob.set(false);
   }
 
   /** Props only within draw distance, swapped when a plant reaches its next stage. */
@@ -108,7 +108,7 @@ class PlantView {
       const { plant } = entry;
       const near =
         Math.hypot(plant.x - x, plant.y - y, plant.z - z) <= drawDistance;
-      const growth = growthOf(plant, this.now(), this.growMinutes);
+      const growth = growthOf(plant, this.clock.now(), this.growMinutes);
       const stage = growth >= 1 ? 2 : growth >= 0.4 ? 1 : 0;
       if (entry.object && (!near || stage !== entry.stage)) {
         DeleteObject(entry.object);
@@ -132,24 +132,10 @@ class PlantView {
     }
   }
 
+  /** The server runs the progress bar and gives the buds when it ran out. */
   async harvest(id: number): Promise<void> {
     if (!this.plants.has(id)) return;
-    const done = await progress({
-      label: Locale("DRUGS_HARVESTING"),
-      duration: 5000,
-      anim: { dict: "amb@world_human_gardener_plant@male@base", clip: "base" },
-    });
-    if (!done) return;
-    const result = await callAction(EVENTS.harvest, [id], {
-      fallback: "DRUGS_ERR_FAR",
-    });
-    if (!result) return;
-    notify(
-      result.destroyed === true
-        ? Locale("DRUGS_DESTROYED")
-        : Locale("DRUGS_HARVESTED", readFinite(result.count) ?? 0),
-      "success",
-    );
+    await callAction(EVENTS.harvest, [id], { fallback: "DRUGS_ERR_FAR" });
   }
 }
 

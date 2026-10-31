@@ -55,7 +55,7 @@ const readId = (value) => readInt(value, 1, 2147483647), oneArg = (read) => ([va
 }, fail = (error) => ({
 	ok: !1,
 	error
-}), isPublic = (rule) => rule.jobs.length === 0 && rule.gangs.length === 0, isObject = (value) => typeof value == "object" && !!value && !Array.isArray(value);
+}), flatDistance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y), randomInt = (min, max) => min + Math.floor(Math.random() * (max - min + 1)), rollChance = (percent) => Math.random() * 100 < percent, isPublic = (rule) => rule.jobs.length === 0 && rule.gangs.length === 0, isObject = (value) => typeof value == "object" && !!value && !Array.isArray(value);
 function readRecords(raw, readOne) {
 	let out = new Map();
 	if (!isObject(raw)) return out;
@@ -252,6 +252,8 @@ const CORE = {
 	vehicleTypeCallback: "ai-core:vehicleType",
 	interactionStateKey: "ai:interaction",
 	pvpStateKey: "ai:pvp",
+	medicalStateKey: "ai:medical",
+	clientDeadEvent: "ai-core:client:dead",
 	charactersCallback: "ai-core:characters",
 	createCharacterCallback: "ai-core:createCharacter",
 	deleteCharacterCallback: "ai-core:deleteCharacter",
@@ -327,6 +329,10 @@ function entityCoords(entity) {
 	};
 }
 const coordsOf = (source) => entityCoords(GetPlayerPed(String(source)));
+function vehicleOf(source, options = {}) {
+	let ped = GetPlayerPed(String(source)), vehicle = GetVehiclePedIsIn(ped, !1);
+	return !vehicle || !options.driver || GetPedInVehicleSeat(vehicle, -1) === ped ? vehicle : 0;
+}
 function isNear(source, point, metres) {
 	let [x = 0, y = 0, z = 0] = GetEntityCoords(GetPlayerPed(String(source))), dx = x - point.x, dy = y - point.y, dz = z - point.z;
 	return dx * dx + dy * dy + dz * dz <= metres * metres;
@@ -394,10 +400,25 @@ function onClientCallback(name, first, second) {
 	});
 }
 const pending$1 = new Map();
+let nextId = 0;
 onNet(responseEvent(resource$4), (id, ok, result) => {
 	let entry = typeof id == "number" ? pending$1.get(id) : void 0;
 	entry && entry.source === Number(globalThis.source) && (pending$1.delete(id), clearTimeout(entry.timer), ok === !0 ? entry.resolve(result) : entry.reject(Error("client callback failed")));
 });
+function triggerClientCallback(name, source, args = [], timeoutMs = 3e4) {
+	let id = ++nextId;
+	return new Promise((resolve, reject) => {
+		let timer = setTimeout(() => {
+			pending$1.delete(id), reject(Error(`client callback ${name} timed out for ${source}`));
+		}, timeoutMs);
+		pending$1.set(id, {
+			source,
+			resolve,
+			reject,
+			timer
+		}), emitNet(requestEvent(name), source, resource$4, id, ...args);
+	});
+}
 // ../../../packages/lib/src/server/admin/patch.ts
 function toPatch(value) {
 	if (!isRecord(value) || typeof value.file != "string") return null;
@@ -983,6 +1004,9 @@ var OnlinePlayers = class {
 	character(source) {
 		return this.start(), this.players.get(source)?.character ?? null;
 	}
+	charId(source) {
+		return this.start(), this.players.get(source)?.character.id;
+	}
 	name(source, options = {}) {
 		let c = this.character(source);
 		return c ? `${c.firstname} ${c.lastname}` : options.fallback === !1 ? "" : GetPlayerName(String(source));
@@ -1283,6 +1307,17 @@ on(CORE.playerUnloadedEvent, (source) => {
 	let settle = running.get(source);
 	settle && settle(!1);
 });
+function progressFor(source, options) {
+	let previous = running.get(source);
+	previous && (previous(!1), emitNet(LIB_UI.progressForCancelEvent, source));
+	let { minRatio = .8, ...bar } = options, startedAt = GetGameTimer();
+	return new Promise((resolve) => {
+		let done = !1, settle = (ok) => {
+			done || (done = !0, running.get(source) === settle && running.delete(source), resolve(ok));
+		};
+		running.set(source, settle), triggerClientCallback(LIB_UI.progressForCallback, source, [bar], bar.duration + 15e3).then((answer) => settle(answer === !0 && GetGameTimer() - startedAt >= bar.duration * minRatio), () => settle(!1));
+	});
+}
 // ../../../packages/lib/src/server/definitions.ts
 const core$11 = resourceExport("ai-core");
 new class {
@@ -16178,8 +16213,12 @@ const viewOf = (p) => ({
 		return count;
 	}
 	near(x, y, metres) {
-		for (let spot of this.pending) if (Math.hypot(spot.x - x, spot.y - y) < metres) return !0;
-		for (let p of this.stream.around(x, y)) if (Math.hypot(p.x - x, p.y - y) < metres) return !0;
+		let at = {
+			x,
+			y
+		};
+		for (let spot of this.pending) if (flatDistance(spot, at) < metres) return !0;
+		for (let p of this.stream.around(x, y)) if (flatDistance(p, at) < metres) return !0;
 		return !1;
 	}
 	follow(source, cx, cy) {
@@ -16247,8 +16286,8 @@ onClientEvent(EVENTS.area, {
 	}
 }, (source, cx, cy) => plants.follow(source, cx, cy));
 async function plantSeed(source) {
-	let s = settings.value, ped = GetPlayerPed(String(source)), charId = online.character(source)?.id;
-	if (charId === void 0 || GetVehiclePedIsIn(ped, !1)) return;
+	let s = settings.value, charId = online.charId(source);
+	if (charId === void 0 || vehicleOf(source)) return;
 	let p = coordsOf(source);
 	if (plants.near(p.x, p.y, 2)) return notify(source, Locale("DRUGS_ERR_TOO_CLOSE"), "error");
 	if (plants.ownedBy(charId) >= s.maxPlants) return notify(source, Locale("DRUGS_ERR_MAX_PLANTS", s.maxPlants), "error");
@@ -16268,23 +16307,33 @@ async function plantSeed(source) {
 		notify(source, Locale("DRUGS_PLANTED", s.growMinutes), "success"), aiLog("drugs", "planted weed", { source });
 	}
 }
+function harvestRefusal(source, id) {
+	let plant = plants.get(id);
+	return plant ? isNear(source, plant, 3) ? null : fail("DRUGS_ERR_FAR") : fail("DRUGS_ERR_GONE");
+}
 onClientCallback(EVENTS.harvest, {
 	args: oneArg(readId),
 	lock: !0
-}, (source, id) => {
+}, async (source, id) => {
+	let refusal = harvestRefusal(source, id);
+	if (refusal) return refusal;
+	if (!await progressFor(source, {
+		label: Locale("DRUGS_HARVESTING"),
+		duration: 5e3,
+		anim: {
+			dict: "amb@world_human_gardener_plant@male@base",
+			clip: "base"
+		},
+		face: plants.get(id)
+	})) return { ok: !0 };
+	let again = harvestRefusal(source, id);
+	if (again) return again;
 	let plant = plants.get(id);
 	if (!plant) return fail("DRUGS_ERR_GONE");
-	if (!isNear(source, plant, 3)) return fail("DRUGS_ERR_FAR");
 	let s = settings.value;
-	if (!(Date.now() - plant.plantedAt >= s.growMinutes * MINUTE)) return isPolice(source) ? (plants.remove([id]), aiLog("drugs", "destroyed a plant", { source }), {
-		ok: !0,
-		destroyed: !0
-	}) : fail("DRUGS_ERR_GROWING");
-	let count = s.budsMin + Math.floor(Math.random() * (s.budsMax - s.budsMin + 1));
-	return inventory.addItem(source, s.budItem, count) ? (plants.remove([id]), aiLog("drugs", `harvested ${count} buds`, { source }), {
-		ok: !0,
-		count
-	}) : fail("DRUGS_ERR_SPACE");
+	if (!(Date.now() - plant.plantedAt >= s.growMinutes * MINUTE)) return isPolice(source) ? (plants.remove([id]), aiLog("drugs", "destroyed a plant", { source }), notify(source, Locale("DRUGS_DESTROYED"), "success"), { ok: !0 }) : fail("DRUGS_ERR_GROWING");
+	let count = randomInt(s.budsMin, s.budsMax);
+	return inventory.addItem(source, s.budItem, count) ? (plants.remove([id]), aiLog("drugs", `harvested ${count} buds`, { source }), notify(source, Locale("DRUGS_HARVESTED", count), "success"), { ok: !0 }) : fail("DRUGS_ERR_SPACE");
 });
 const seedItems = new Set();
 function registerSeed() {
@@ -16304,7 +16353,7 @@ onClientCallback(EVENTS.sell, {
 	args: oneArg(readId),
 	lock: !0
 }, (source, buyerNetId) => {
-	let s = settings.value, charId = online.character(source)?.id;
+	let s = settings.value, charId = online.charId(source);
 	if (charId === void 0) return fail("DRUGS_ERR_NOTHING");
 	if (!saleCooldowns.ready(charId)) return fail("DRUGS_ERR_WAIT");
 	let buyer = buyerNear(source, buyerNetId);
@@ -16312,9 +16361,9 @@ onClientCallback(EVENTS.sell, {
 	if (policeOnDuty() < s.sellMinPolice) return fail("DRUGS_ERR_POLICE");
 	let drug = s.drugs.find((d) => inventory.getItemCount(source, d.name) > 0);
 	if (!drug) return fail("DRUGS_ERR_NOTHING");
-	if (saleCooldowns.start(charId, s.saleCooldown * 1e3), servedBuyers.start(buyer, 6e5), Math.random() * 100 < s.refuseChance) return fail("DRUGS_ERR_REFUSED");
-	let count = Math.min(inventory.getItemCount(source, drug.name), 1 + Math.floor(Math.random() * 3)), price = (drug.min + Math.floor(Math.random() * (drug.max - drug.min + 1))) * count;
-	return inventory.removeItem(source, drug.name, count) ? (core.AddMoney(source, s.account, price, "drugs:sale"), Math.random() * 100 < s.alertChance && dispatch.alert({
+	if (saleCooldowns.start(charId, s.saleCooldown * 1e3), servedBuyers.start(buyer, 6e5), rollChance(s.refuseChance)) return fail("DRUGS_ERR_REFUSED");
+	let count = Math.min(inventory.getItemCount(source, drug.name), randomInt(1, 3)), price = randomInt(drug.min, drug.max) * count;
+	return inventory.removeItem(source, drug.name, count) ? (core.AddMoney(source, s.account, price, "drugs:sale"), rollChance(s.alertChance) && dispatch.alert({
 		code: "10-31",
 		title: Locale("DRUGS_ALERT"),
 		coords: coordsOf(source),

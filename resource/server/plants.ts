@@ -9,15 +9,20 @@ import {
   onClientCallback,
   onClientEvent,
   online,
+  progressFor,
+  vehicleOf,
 } from "@aicore-fivem/lib/server";
 import { mysql } from "@aicore-fivem/mysql";
 import {
   createLogger,
   fail,
+  flatDistance,
   oneArg,
+  randomInt,
   readId,
   readInt,
 } from "@aicore-fivem/lib/shared";
+import type { ActionResult } from "@aicore-fivem/shared";
 import { Locale, ResourceName } from "common";
 import { CELL, EVENTS, type Plant } from "common/drugs";
 import { isPolice, panel, settings } from "./content";
@@ -114,10 +119,11 @@ class Plants {
 
   /** A plant (or a planting in flight) within `metres` of the point (its cell and the neighbours). */
   near(x: number, y: number, metres: number): boolean {
+    const at = { x, y };
     for (const spot of this.pending)
-      if (Math.hypot(spot.x - x, spot.y - y) < metres) return true;
+      if (flatDistance(spot, at) < metres) return true;
     for (const p of this.stream.around(x, y))
-      if (Math.hypot(p.x - x, p.y - y) < metres) return true;
+      if (flatDistance(p, at) < metres) return true;
     return false;
   }
 
@@ -230,9 +236,8 @@ onClientEvent(
 /** The weed seed: planted on foot, away from other plants, within the character's plant limit. */
 async function plantSeed(source: number): Promise<void> {
   const s = settings.value;
-  const ped = GetPlayerPed(String(source));
-  const charId = online.character(source)?.id;
-  if (charId === undefined || GetVehiclePedIsIn(ped, false)) return;
+  const charId = online.charId(source);
+  if (charId === undefined || vehicleOf(source)) return;
   const p = coordsOf(source);
   if (plants.near(p.x, p.y, 2))
     return notify(source, Locale("DRUGS_ERR_TOO_CLOSE"), "error");
@@ -256,28 +261,48 @@ async function plantSeed(source: number): Promise<void> {
   aiLog("drugs", "planted weed", { source });
 }
 
+/** The plant is gone or the player is not next to it. */
+function harvestRefusal(source: number, id: number): ActionResult | null {
+  const plant = plants.get(id);
+  if (!plant) return fail("DRUGS_ERR_GONE");
+  if (!isNear(source, plant, 3)) return fail("DRUGS_ERR_FAR");
+  return null;
+}
+
 onClientCallback(
   EVENTS.harvest,
   { args: oneArg(readId), lock: true },
-  (source, id) => {
+  async (source, id) => {
+    const refusal = harvestRefusal(source, id);
+    if (refusal) return refusal;
+    const done = await progressFor(source, {
+      label: Locale("DRUGS_HARVESTING"),
+      duration: 5000,
+      anim: { dict: "amb@world_human_gardener_plant@male@base", clip: "base" },
+      face: plants.get(id),
+    });
+    // A cancelled bar ends quietly.
+    if (!done) return { ok: true };
+    const again = harvestRefusal(source, id);
+    if (again) return again;
     const plant = plants.get(id);
     if (!plant) return fail("DRUGS_ERR_GONE");
-    if (!isNear(source, plant, 3)) return fail("DRUGS_ERR_FAR");
     const s = settings.value;
     const ready = Date.now() - plant.plantedAt >= s.growMinutes * MINUTE;
     if (!ready) {
       if (!isPolice(source)) return fail("DRUGS_ERR_GROWING");
       plants.remove([id]);
       aiLog("drugs", "destroyed a plant", { source });
-      return { ok: true, destroyed: true };
+      notify(source, Locale("DRUGS_DESTROYED"), "success");
+      return { ok: true };
     }
-    const count =
-      s.budsMin + Math.floor(Math.random() * (s.budsMax - s.budsMin + 1));
+    const count = randomInt(s.budsMin, s.budsMax);
     if (!inventory.addItem(source, s.budItem, count))
       return fail("DRUGS_ERR_SPACE");
     plants.remove([id]);
     aiLog("drugs", `harvested ${count} buds`, { source });
-    return { ok: true, count };
+    notify(source, Locale("DRUGS_HARVESTED", count), "success");
+    return { ok: true };
   },
 );
 

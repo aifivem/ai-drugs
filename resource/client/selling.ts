@@ -10,7 +10,7 @@ import {
   requestAnimDict,
   showPrompt,
 } from "@aicore-fivem/lib/client";
-import { readFinite } from "@aicore-fivem/lib/shared";
+import { pickRandom, readFinite } from "@aicore-fivem/lib/shared";
 import { Locale } from "common";
 import { EVENTS } from "common/drugs";
 
@@ -18,8 +18,7 @@ const PROMPT = "drugsale";
 
 const distanceTo = (entity: number) => {
   const [x = 0, y = 0, z = 0] = GetEntityCoords(entity, false);
-  const [px = 0, py = 0, pz = 0] = GetEntityCoords(cache.ped, false);
-  return Math.hypot(x - px, y - py, z - pz);
+  return player.distanceTo({ x, y, z });
 };
 
 /**
@@ -76,7 +75,7 @@ class Selling {
         !this.asked.has(ped) &&
         distanceTo(ped) <= 25,
     );
-    const ped = peds[Math.floor(Math.random() * peds.length)];
+    const ped = pickRandom(peds);
     if (ped === undefined) return;
     this.buyer = ped;
     this.asked.add(ped);

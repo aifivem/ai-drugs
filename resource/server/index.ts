@@ -12,7 +12,14 @@ import {
   online,
   pedFromNet,
 } from "@aicore-fivem/lib/server";
-import { createLogger, fail, oneArg, readId } from "@aicore-fivem/lib/shared";
+import {
+  createLogger,
+  fail,
+  oneArg,
+  randomInt,
+  readId,
+  rollChance,
+} from "@aicore-fivem/lib/shared";
 import { Locale, ResourceName } from "common";
 import { EVENTS } from "common/drugs";
 import { core, policeOnDuty, settings } from "./content";
@@ -49,7 +56,7 @@ onClientCallback(
   { args: oneArg(readId), lock: true },
   (source, buyerNetId) => {
     const s = settings.value;
-    const charId = online.character(source)?.id;
+    const charId = online.charId(source);
     if (charId === undefined) return fail("DRUGS_ERR_NOTHING");
     if (!saleCooldowns.ready(charId)) return fail("DRUGS_ERR_WAIT");
     const buyer = buyerNear(source, buyerNetId);
@@ -61,18 +68,16 @@ onClientCallback(
     if (!drug) return fail("DRUGS_ERR_NOTHING");
     saleCooldowns.start(charId, s.saleCooldown * 1000);
     servedBuyers.start(buyer, BUYER_MS);
-    if (Math.random() * 100 < s.refuseChance) return fail("DRUGS_ERR_REFUSED");
+    if (rollChance(s.refuseChance)) return fail("DRUGS_ERR_REFUSED");
     const count = Math.min(
       inventory.getItemCount(source, drug.name),
-      1 + Math.floor(Math.random() * 3),
+      randomInt(1, 3),
     );
-    const price =
-      (drug.min + Math.floor(Math.random() * (drug.max - drug.min + 1))) *
-      count;
+    const price = randomInt(drug.min, drug.max) * count;
     if (!inventory.removeItem(source, drug.name, count))
       return fail("DRUGS_ERR_NOTHING");
     core.AddMoney(source, s.account, price, "drugs:sale");
-    if (Math.random() * 100 < s.alertChance)
+    if (rollChance(s.alertChance))
       dispatch.alert({
         code: "10-31",
         title: Locale("DRUGS_ALERT"),
