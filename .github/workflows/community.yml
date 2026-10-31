@@ -16,4 +16,7 @@ permissions:
 jobs:
   community:
     uses: aifivem/.github/.github/workflows/community.yml@main
-    secrets: inherit
+    # Only the two forum webhooks: never every secret on a pull_request_target run.
+    secrets:
+      DISCORD_BUG_FORUM_WEBHOOK: ${{ secrets.DISCORD_BUG_FORUM_WEBHOOK }}
+      DISCORD_SUGGESTION_FORUM_WEBHOOK: ${{ secrets.DISCORD_SUGGESTION_FORUM_WEBHOOK }}
