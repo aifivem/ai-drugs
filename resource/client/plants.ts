@@ -1,5 +1,6 @@
 import {
   AdminWorld,
+  AreaFollower,
   cache,
   callAction,
   every,
@@ -9,10 +10,10 @@ import {
   progress,
   requestModel,
 } from "@aicore-fivem/lib/client";
-import { asArgs, readFinite, readId } from "@aicore-fivem/lib/shared";
+import { readFinite, readId } from "@aicore-fivem/lib/shared";
 import { Locale } from "common";
 import {
-  cellOf,
+  CELL,
   EVENTS,
   growthOf,
   readLook,
@@ -35,10 +36,10 @@ class PlantView {
   private readonly points = new Points();
   private offset = 0;
   private growMinutes = 60;
-  private cell = "";
+  private readonly follower = new AreaFollower(EVENTS.area, CELL);
 
   constructor() {
-    every(2000, () => this.watchCell(), { name: "plantCell" });
+    this.follower.start();
     every(5000, () => this.render(), { name: "plantRender" });
   }
 
@@ -46,26 +47,20 @@ class PlantView {
     return Date.now() + this.offset;
   }
 
-  private watchCell(): void {
-    const [x = 0, y = 0] = GetEntityCoords(cache.ped, false);
-    const { cx, cy } = cellOf(x, y);
-    const key = `${cx}:${cy}`;
-    if (key === this.cell) return;
-    this.cell = key;
-    emitNet(EVENTS.area, cx, cy);
-  }
-
-  snapshot(list: Plant[], serverNow: number, growMinutes: number): void {
-    for (const id of this.plants.keys()) this.remove(id);
+  /** The server's area message: a reset replaces every plant; the clock and growth time come with each. */
+  apply(
+    reset: boolean,
+    puts: Plant[],
+    removes: number[],
+    serverNow: number,
+    growMinutes: number,
+  ): void {
+    if (reset) for (const id of this.plants.keys()) this.remove(id);
+    for (const id of removes) this.remove(id);
     this.offset = serverNow - Date.now();
     this.growMinutes = growMinutes;
     // One render for the whole list (a render per plant would walk every plant each time).
-    for (const plant of list) this.add(plant);
-    void this.render();
-  }
-
-  put(plant: Plant): void {
-    this.add(plant);
+    for (const plant of puts) this.add(plant);
     void this.render();
   }
 
@@ -161,21 +156,25 @@ class PlantView {
 const view = new PlantView();
 world.onChange("plants", () => view.restyle());
 onServerEvent(
-  EVENTS.snapshot,
+  EVENTS.plants,
   {
-    args: ([list, now, grow]): [Plant[], number, number] | null => {
+    args: ([reset, puts, removes, now, grow]) => {
       const serverNow = readFinite(now);
       const minutes = readFinite(grow);
-      return Array.isArray(list) && serverNow !== null && minutes !== null
-        ? [list.flatMap((p) => toPlant(p) ?? []), serverNow, minutes]
+      return Array.isArray(puts) &&
+        Array.isArray(removes) &&
+        serverNow !== null &&
+        minutes !== null
+        ? ([
+            reset === true,
+            puts.flatMap((p) => toPlant(p) ?? []),
+            removes.flatMap((id) => readId(id) ?? []),
+            serverNow,
+            minutes,
+          ] as const)
         : null;
     },
   },
-  (list, now, grow) => view.snapshot(list, now, grow),
-);
-onServerEvent(EVENTS.put, { args: ([p]) => asArgs(toPlant(p)) }, (plant) =>
-  view.put(plant),
-);
-onServerEvent(EVENTS.remove, { args: ([id]) => asArgs(readId(id)) }, (id) =>
-  view.remove(id),
+  (reset, puts, removes, now, grow) =>
+    view.apply(reset, puts, removes, now, grow),
 );

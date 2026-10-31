@@ -12,25 +12,16 @@ import {
 export const EVENTS = {
   /** Callback: (buyerNetId) -> { ok, count, price } sells to the stranger next to the player. */
   sell: "ai-drugs:sell",
-  /** Client -> server: (cellX, cellY) the player's plant cell changed (snapshot of the 3x3 cells around it follows). */
+  /** Client -> server: (cellX, cellY) the player's plant cell changed (lib `AreaFollower`). */
   area: "ai-drugs:area",
-  /** Server -> player: (plants: Plant[], serverNow, growMinutes) every plant around the player's cell. */
-  snapshot: "ai-drugs:client:snapshot",
-  /** Server -> players watching the cell: (plant: Plant) a plant was planted. */
-  put: "ai-drugs:client:put",
-  /** Server -> players watching the cell: (id) a plant was harvested, destroyed or rotted. */
-  remove: "ai-drugs:client:remove",
+  /** Server -> player: (reset, puts: Plant[], removes: id[], serverNow, growMinutes) the plants around the player (lib `AreaStream`: the 3x3 cells around it, then changes). */
+  plants: "ai-drugs:client:plants",
   /** Callback: (plantId) -> { ok } harvests a ready plant, or destroys it (police). */
   harvest: "ai-drugs:harvest",
 } as const;
 
 /** Plants are grouped in square cells of this many metres; a player watches the 3x3 cells around their own. */
 export const CELL = 128;
-export const cellOf = (x: number, y: number) => ({
-  cx: Math.floor(x / CELL),
-  cy: Math.floor(y / CELL),
-});
-export const cellKey = (cx: number, cy: number) => `${cx}:${cy}`;
 
 export interface Plant {
   id: number;

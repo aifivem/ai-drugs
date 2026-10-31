@@ -53,8 +53,7 @@ onClientCallback(
     if (charId === undefined) return fail("DRUGS_ERR_NOTHING");
     if (!saleCooldowns.ready(charId)) return fail("DRUGS_ERR_WAIT");
     const buyer = buyerNear(source, buyerNetId);
-    if (!buyer || !servedBuyers.ready(buyer))
-      return fail("DRUGS_ERR_NO_BUYER");
+    if (!buyer || !servedBuyers.ready(buyer)) return fail("DRUGS_ERR_NO_BUYER");
     if (policeOnDuty() < s.sellMinPolice) return fail("DRUGS_ERR_POLICE");
     const drug = s.drugs.find(
       (d) => inventory.getItemCount(source, d.name) > 0,

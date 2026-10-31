@@ -1,5 +1,6 @@
 import {
   aiLog,
+  AreaStream,
   coordsOf,
   every,
   inventory,
@@ -8,7 +9,6 @@ import {
   onClientCallback,
   onClientEvent,
   online,
-  PlayerMap,
 } from "@aicore-fivem/lib/server";
 import { mysql } from "@aicore-fivem/mysql";
 import {
@@ -19,7 +19,7 @@ import {
   readInt,
 } from "@aicore-fivem/lib/shared";
 import { Locale, ResourceName } from "common";
-import { cellKey, cellOf, EVENTS, type Plant } from "common/drugs";
+import { CELL, EVENTS, type Plant } from "common/drugs";
 import { isPolice, panel, settings } from "./content";
 
 const log = createLogger(ResourceName);
@@ -28,8 +28,6 @@ type Spot = { owner: number; x: number; y: number };
 
 /** Rows per DELETE statement of the rot sweep. */
 const DELETE_CHUNK = 500;
-/** A snapshot with more plants than this goes as a latent event (about 60 bytes per plant). */
-const LATENT_ABOVE = 50;
 const MINUTE = 60_000;
 
 /** Adds `value` to the set at `key`, creating it. */
@@ -46,25 +44,30 @@ function removeFrom<K, V>(map: Map<K, Set<V>>, key: K, value: V): void {
   if (set.size === 0) map.delete(key);
 }
 
+const viewOf = (p: Stored): Plant => ({
+  id: p.id,
+  x: p.x,
+  y: p.y,
+  z: p.z,
+  plantedAt: p.plantedAt,
+});
+
 /**
- * Every weed plant in memory, indexed by cell and by planted minute (the rot sweep reads only the minutes that just
- * passed the limit); players watch the 3x3 cells around them (`watchers` per cell) and get a snapshot when they move
- * to another cell, then only puts and removes of the cells they watch. A planting in flight holds its spot and its
- * owner's count (`pending`) until the INSERT answers, so quick seeds cannot pass the limit or stack.
+ * Every weed plant in memory, streamed by 128 m cell (lib `AreaStream`: the 3x3 cells around the player, then puts
+ * and removes, with the server clock for the growth countdown) and indexed by planted minute (the rot sweep reads only
+ * the minutes that just passed the limit). A planting in flight holds its spot and its owner's count (`pending`) until
+ * the INSERT answers, so quick seeds cannot pass the limit or stack.
  */
 class Plants {
-  private readonly byId = new Map<number, Stored>();
-  private readonly cells = new Map<string, Set<number>>();
+  private readonly stream = new AreaStream<Stored, Plant>({
+    event: EVENTS.plants,
+    view: viewOf,
+    cellSize: CELL,
+    extra: () => [Date.now(), settings.value.growMinutes],
+  });
   private readonly byMinute = new Map<number, Set<number>>();
   private readonly owners = new Map<number, number>();
   private readonly pending = new Set<Spot>();
-  /** Cell key -> players watching it; source -> the cells it watches. */
-  private readonly watchers = new Map<string, Set<number>>();
-  private readonly watching = new PlayerMap<{
-    cx: number;
-    cy: number;
-    keys: string[];
-  }>({ onDrop: (source, w) => this.forget(source, w.keys) });
   /** The last planted minute the rot sweep handled (-Infinity: none yet). */
   private swept = -Infinity;
 
@@ -79,30 +82,27 @@ class Plants {
         planted_at: number;
       }>
     >("SELECT id, owner, x, y, z, planted_at FROM ai_drugs_plants");
-    for (const r of rows)
-      this.index({
-        id: Number(r.id),
-        owner: Number(r.owner),
-        x: r.x,
-        y: r.y,
-        z: r.z,
-        plantedAt: Number(r.planted_at),
-      });
-    log.info(`${this.byId.size} plants loaded`);
-    // Players who arrived before the load got an empty snapshot.
-    for (const [source, w] of this.watching) this.watch(source, w.cx, w.cy);
+    const loaded = rows.map((r): Stored => ({
+      id: Number(r.id),
+      owner: Number(r.owner),
+      x: r.x,
+      y: r.y,
+      z: r.z,
+      plantedAt: Number(r.planted_at),
+    }));
+    for (const plant of loaded) this.count(plant);
+    // Players who arrived before the load get their area again.
+    this.stream.load(loaded);
+    log.info(`${this.stream.size} plants loaded`);
   }
 
-  private index(plant: Stored): void {
-    this.byId.set(plant.id, plant);
-    const { cx, cy } = cellOf(plant.x, plant.y);
-    addTo(this.cells, cellKey(cx, cy), plant.id);
+  private count(plant: Stored): void {
     addTo(this.byMinute, Math.floor(plant.plantedAt / MINUTE), plant.id);
     this.owners.set(plant.owner, (this.owners.get(plant.owner) ?? 0) + 1);
   }
 
   get(id: number): Stored | undefined {
-    return this.byId.get(id);
+    return this.stream.get(id);
   }
 
   /** Plants of the owner, plantings in flight included. */
@@ -116,52 +116,14 @@ class Plants {
   near(x: number, y: number, metres: number): boolean {
     for (const spot of this.pending)
       if (Math.hypot(spot.x - x, spot.y - y) < metres) return true;
-    const { cx, cy } = cellOf(x, y);
-    for (let dx = -1; dx <= 1; dx++)
-      for (let dy = -1; dy <= 1; dy++)
-        for (const id of this.cells.get(cellKey(cx + dx, cy + dy)) ?? []) {
-          const p = this.byId.get(id);
-          if (p && Math.hypot(p.x - x, p.y - y) < metres) return true;
-        }
+    for (const p of this.stream.around(x, y))
+      if (Math.hypot(p.x - x, p.y - y) < metres) return true;
     return false;
   }
 
-  watch(source: number, cx: number, cy: number): void {
-    const before = this.watching.get(source);
-    if (before) this.forget(source, before.keys);
-    const keys: string[] = [];
-    const list: Plant[] = [];
-    for (let dx = -1; dx <= 1; dx++)
-      for (let dy = -1; dy <= 1; dy++) {
-        const key = cellKey(cx + dx, cy + dy);
-        keys.push(key);
-        addTo(this.watchers, key, source);
-        for (const id of this.cells.get(key) ?? []) {
-          const p = this.byId.get(id);
-          if (p)
-            list.push({
-              id: p.id,
-              x: p.x,
-              y: p.y,
-              z: p.z,
-              plantedAt: p.plantedAt,
-            });
-        }
-      }
-    this.watching.set(source, { cx, cy, keys });
-    const args = [list, Date.now(), settings.value.growMinutes];
-    if (list.length > LATENT_ABOVE)
-      TriggerLatentClientEvent(EVENTS.snapshot, source, 25_000, ...args);
-    else emitNet(EVENTS.snapshot, source, ...args);
-  }
-
-  private forget(source: number, keys: string[]): void {
-    for (const key of keys) removeFrom(this.watchers, key, source);
-  }
-
-  private watchersOf(plant: Plant): ReadonlySet<number> {
-    const { cx, cy } = cellOf(plant.x, plant.y);
-    return this.watchers.get(cellKey(cx, cy)) ?? new Set();
+  /** The player's cell as its client reported it (checked against the server's position). */
+  follow(source: number, cx: number, cy: number): void {
+    this.stream.followReported(source, cx, cy);
   }
 
   /** Plants at a spot held by `reserve`; the spot is released whatever the INSERT does. */
@@ -181,10 +143,8 @@ class Plants {
         z,
         plantedAt,
       };
-      this.index(plant);
-      const view: Plant = { id, x: spot.x, y: spot.y, z, plantedAt };
-      for (const source of this.watchersOf(plant))
-        emitNet(EVENTS.put, source, view);
+      this.count(plant);
+      this.stream.set(plant);
     } finally {
       this.pending.delete(spot);
     }
@@ -203,17 +163,13 @@ class Plants {
   remove(ids: number[]): void {
     const gone: number[] = [];
     for (const id of ids) {
-      const plant = this.byId.get(id);
+      const plant = this.stream.get(id);
       if (!plant) continue;
-      this.byId.delete(id);
-      const { cx, cy } = cellOf(plant.x, plant.y);
-      removeFrom(this.cells, cellKey(cx, cy), id);
+      this.stream.delete(id);
       removeFrom(this.byMinute, Math.floor(plant.plantedAt / MINUTE), id);
       const owned = (this.owners.get(plant.owner) ?? 1) - 1;
       if (owned > 0) this.owners.set(plant.owner, owned);
       else this.owners.delete(plant.owner);
-      for (const source of this.watchersOf(plant))
-        emitNet(EVENTS.remove, source, id);
       gone.push(id);
     }
     for (let i = 0; i < gone.length; i += DELETE_CHUNK) {
@@ -268,13 +224,7 @@ onClientEvent(
     },
     rate: { count: 2, windowMs: 1000 },
   },
-  (source, cx, cy) => {
-    const p = coordsOf(source);
-    const real = cellOf(p.x, p.y);
-    // The client's cell may lag one cell behind the server's view of the ped.
-    if (Math.abs(real.cx - cx) > 1 || Math.abs(real.cy - cy) > 1) return;
-    plants.watch(source, cx, cy);
-  },
+  (source, cx, cy) => plants.follow(source, cx, cy),
 );
 
 /** The weed seed: planted on foot, away from other plants, within the character's plant limit. */

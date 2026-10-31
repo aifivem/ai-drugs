@@ -126,7 +126,10 @@ const spec = {
 		max,
 		...optional ? { optional } : {}
 	})
-};
+}, OFFSET = 16384, clampCell = (v) => Math.max(-16e3, Math.min(16e3, v)), gridCell = (x, y, size) => ({
+	cx: clampCell(Math.floor(x / size)),
+	cy: clampCell(Math.floor(y / size))
+}), cellKey = (cx, cy) => (clampCell(cx) + OFFSET) * 32768 + (clampCell(cy) + OFFSET);
 // ../../../packages/lib/src/shared/index.ts
 function isRecord(value) {
 	return typeof value == "object" && !!value && !Array.isArray(value);
@@ -249,6 +252,8 @@ const CORE = {
 	clientCancelProgressEvent: "ai-core:client:cancelProgress",
 	clientDefinitionsEvent: "ai-core:client:definitions",
 	vehicleTypeCallback: "ai-core:vehicleType",
+	progressForCallback: "ai-core:progressFor",
+	progressForCancelEvent: "ai-core:client:progressForCancel",
 	interactionStateKey: "ai:interaction",
 	charactersCallback: "ai-core:characters",
 	createCharacterCallback: "ai-core:createCharacter",
@@ -1031,7 +1036,199 @@ var PlayerMap = class extends Map {
 		for (let [key, until] of this.until) until <= now && this.until.delete(key);
 		this.sweepAt = Math.max(64, this.until.size * 2);
 	}
+}, AreaStream = class {
+	options;
+	items = new Map();
+	cells = new Map();
+	followers = new PlayerMap({ onDrop: (source, f) => this.leave(source, f) });
+	inCell = new Map();
+	alsoOf = new Map();
+	size_;
+	range;
+	chunk;
+	stale = !1;
+	constructor(options) {
+		this.options = options, this.size_ = options.cellSize ?? 64, this.range = options.range ?? 1, this.chunk = options.chunk ?? 50;
+	}
+	get size() {
+		return this.items.size;
+	}
+	get(id) {
+		return this.items.get(id)?.item;
+	}
+	*values() {
+		for (let entry of this.items.values()) yield entry.item;
+	}
+	cellOf(x, y) {
+		return gridCell(x, y, this.size_);
+	}
+	countAt(x, y) {
+		let { cx, cy } = this.cellOf(x, y);
+		return this.cells.get(cellKey(cx, cy))?.size ?? 0;
+	}
+	*around(x, y, cells = 1) {
+		let { cx, cy } = this.cellOf(x, y);
+		for (let dx = -cells; dx <= cells; dx++) for (let dy = -cells; dy <= cells; dy++) for (let entry of this.cells.get(cellKey(cx + dx, cy + dy)) ?? []) yield entry.item;
+	}
+	set(item, resend = !0) {
+		this.stale && this.followAll();
+		let { cx, cy } = this.cellOf(item.x, item.y), also = this.options.alsoTo?.(item), entry = this.items.get(item.id);
+		if (!entry) {
+			let fresh = {
+				item,
+				cx,
+				cy,
+				also: void 0
+			};
+			this.items.set(item.id, fresh), this.file(fresh), this.setAlso(fresh, also);
+			let put = [this.options.view(item)];
+			for (let source of this.who(cx, cy, also)) this.send(source, put, []);
+			return;
+		}
+		let before = this.who(entry.cx, entry.cy, entry.also);
+		(entry.cx !== cx || entry.cy !== cy) && (this.unfile(entry), entry.cx = cx, entry.cy = cy, this.file(entry)), entry.item = item, this.setAlso(entry, also);
+		let after = this.who(cx, cy, also), gone = [item.id];
+		for (let source of before) after.has(source) || this.send(source, [], gone);
+		let put = [this.options.view(item)];
+		for (let source of after) (resend || !before.has(source)) && this.send(source, put, []);
+	}
+	delete(id) {
+		let entry = this.items.get(id);
+		if (!entry) return;
+		this.items.delete(id), this.unfile(entry);
+		let gone = [id];
+		for (let source of this.who(entry.cx, entry.cy, entry.also)) this.send(source, [], gone);
+		this.setAlso(entry, void 0);
+	}
+	load(items) {
+		for (let item of items) {
+			let old = this.items.get(item.id);
+			old && (this.unfile(old), this.setAlso(old, void 0));
+			let { cx, cy } = this.cellOf(item.x, item.y), entry = {
+				item,
+				cx,
+				cy,
+				also: void 0
+			};
+			this.items.set(item.id, entry), this.file(entry), this.setAlso(entry, this.options.alsoTo?.(item));
+		}
+		for (let [source, f] of this.followers) this.snapshot(source, f);
+	}
+	recipients(id) {
+		let entry = this.items.get(id);
+		return entry ? this.who(entry.cx, entry.cy, entry.also) : new Set();
+	}
+	knows(source, id) {
+		let entry = this.items.get(id);
+		if (!entry) return !1;
+		if (entry.also === source) return !0;
+		let f = this.followers.get(source);
+		return f !== void 0 && Math.abs(f.cx - entry.cx) <= this.range && Math.abs(f.cy - entry.cy) <= this.range;
+	}
+	start(source, at = coordsOf(source)) {
+		let { cx, cy } = this.cellOf(at.x, at.y), old = this.followers.get(source);
+		old && this.leave(source, old);
+		let f = {
+			cx,
+			cy
+		};
+		this.followers.set(source, f), this.enter(source, f), this.snapshot(source, f);
+	}
+	follow(source, cx, cy) {
+		let f = this.followers.get(source);
+		if (!f) {
+			let fresh = {
+				cx,
+				cy
+			};
+			return this.followers.set(source, fresh), this.enter(source, fresh), this.snapshot(source, fresh);
+		}
+		this.move(source, f, cx, cy);
+	}
+	followReported(source, cx, cy) {
+		let p = coordsOf(source), real = this.cellOf(p.x, p.y);
+		return Math.abs(real.cx - cx) > 1 || Math.abs(real.cy - cy) > 1 ? !1 : (this.follow(source, cx, cy), !0);
+	}
+	followAll() {
+		if (this.items.size === 0) this.stale = !0;
+		else {
+			this.stale = !1;
+			for (let [source, f] of this.followers) {
+				let p = coordsOf(source), { cx, cy } = this.cellOf(p.x, p.y);
+				this.move(source, f, cx, cy);
+			}
+		}
+	}
+	stop(source, tell = !1) {
+		let f = this.followers.get(source);
+		f && (this.followers.delete(source), this.leave(source, f), tell && this.emit(source, !0, [], []));
+	}
+	following(source) {
+		return this.followers.has(source);
+	}
+	move(source, f, cx, cy) {
+		if (f.cx === cx && f.cy === cy) return;
+		let r = this.range, removes = [], puts = [];
+		for (let dx = -r; dx <= r; dx++) for (let dy = -r; dy <= r; dy++) {
+			let ox = f.cx + dx, oy = f.cy + dy;
+			if (Math.abs(ox - cx) > r || Math.abs(oy - cy) > r) for (let entry of this.cells.get(cellKey(ox, oy)) ?? []) entry.also !== source && removes.push(entry.item.id);
+			let nx = cx + dx, ny = cy + dy;
+			if (Math.abs(nx - f.cx) > r || Math.abs(ny - f.cy) > r) for (let entry of this.cells.get(cellKey(nx, ny)) ?? []) entry.also !== source && puts.push(this.options.view(entry.item));
+		}
+		this.leave(source, f), f.cx = cx, f.cy = cy, this.enter(source, f), (puts.length > 0 || removes.length > 0) && this.send(source, puts, removes);
+	}
+	snapshot(source, f) {
+		let puts = [], r = this.range;
+		for (let dx = -r; dx <= r; dx++) for (let dy = -r; dy <= r; dy++) for (let entry of this.cells.get(cellKey(f.cx + dx, f.cy + dy)) ?? []) puts.push(this.options.view(entry.item));
+		for (let entry of this.alsoOf.get(source) ?? []) (Math.abs(entry.cx - f.cx) > r || Math.abs(entry.cy - f.cy) > r) && puts.push(this.options.view(entry.item));
+		this.emit(source, !0, puts, []);
+	}
+	who(cx, cy, also) {
+		let out = new Set(), r = this.range;
+		for (let dx = -r; dx <= r; dx++) for (let dy = -r; dy <= r; dy++) for (let source of this.inCell.get(cellKey(cx + dx, cy + dy)) ?? []) out.add(source);
+		return also !== void 0 && out.add(also), out;
+	}
+	send(source, puts, removes) {
+		this.emit(source, !1, puts, removes);
+	}
+	emit(source, reset, puts, removes) {
+		let extra = this.options.extra?.() ?? [], { event } = this.options;
+		emitNet(event, source, reset, puts.slice(0, this.chunk), removes, ...extra);
+		for (let i = this.chunk; i < puts.length; i += this.chunk) emitNet(event, source, !1, puts.slice(i, i + this.chunk), [], ...extra);
+	}
+	setAlso(entry, also) {
+		if (entry.also === also) return;
+		if (entry.also !== void 0) {
+			let set = this.alsoOf.get(entry.also);
+			set?.delete(entry), set?.size === 0 && this.alsoOf.delete(entry.also);
+		}
+		if (entry.also = also, also === void 0) return;
+		let set = this.alsoOf.get(also);
+		set || this.alsoOf.set(also, set = new Set()), set.add(entry);
+	}
+	file(entry) {
+		let key = cellKey(entry.cx, entry.cy), set = this.cells.get(key);
+		set || this.cells.set(key, set = new Set()), set.add(entry);
+	}
+	unfile(entry) {
+		let key = cellKey(entry.cx, entry.cy), set = this.cells.get(key);
+		set?.delete(entry), set?.size === 0 && this.cells.delete(key);
+	}
+	enter(source, f) {
+		let key = cellKey(f.cx, f.cy), set = this.inCell.get(key);
+		set || this.inCell.set(key, set = new Set()), set.add(source);
+	}
+	leave(source, f) {
+		let key = cellKey(f.cx, f.cy), set = this.inCell.get(key);
+		set?.delete(source), set?.size === 0 && this.inCell.delete(key);
+	}
 };
+// ../../../packages/lib/src/server/progressFor.ts
+const running = new PlayerMap({ onDrop: (_source, settle) => settle(!1) });
+on(CORE.playerUnloadedEvent, (source) => {
+	let settle = running.get(source);
+	settle && settle(!1);
+});
 // ../../../packages/lib/src/server/command.ts
 const resource$3 = GetCurrentResourceName();
 createLogger(resource$3), new class {
@@ -15507,14 +15704,9 @@ IsDuplicityVersion();
 const EVENTS = {
 	sell: "ai-drugs:sell",
 	area: "ai-drugs:area",
-	snapshot: "ai-drugs:client:snapshot",
-	put: "ai-drugs:client:put",
-	remove: "ai-drugs:client:remove",
+	plants: "ai-drugs:client:plants",
 	harvest: "ai-drugs:harvest"
-}, cellOf = (x, y) => ({
-	cx: Math.floor(x / 128),
-	cy: Math.floor(y / 128)
-}), cellKey = (cx, cy) => `${cx}:${cy}`;
+};
 function readSettings(raw) {
 	let v = record(raw), jobs = Array.isArray(v.policeJobs) ? v.policeJobs.filter((j) => typeof j == "string") : [], drugs = (Array.isArray(v.drugs) ? v.drugs.map(record) : []).flatMap((d) => {
 		if (typeof d.name != "string") return [];
@@ -15872,35 +16064,40 @@ function removeFrom(map, key, value) {
 	let set = map.get(key);
 	set && (set.delete(value), set.size === 0 && map.delete(key));
 }
-const plants = new class {
-	byId = new Map();
-	cells = new Map();
+const viewOf = (p) => ({
+	id: p.id,
+	x: p.x,
+	y: p.y,
+	z: p.z,
+	plantedAt: p.plantedAt
+}), plants = new class {
+	stream = new AreaStream({
+		event: EVENTS.plants,
+		view: viewOf,
+		cellSize: 128,
+		extra: () => [Date.now(), settings.value.growMinutes]
+	});
 	byMinute = new Map();
 	owners = new Map();
 	pending = new Set();
-	watchers = new Map();
-	watching = new PlayerMap({ onDrop: (source, w) => this.forget(source, w.keys) });
 	swept = -Infinity;
 	async load() {
-		let rows = await mysql.query("SELECT id, owner, x, y, z, planted_at FROM ai_drugs_plants");
-		for (let r of rows) this.index({
+		let loaded = (await mysql.query("SELECT id, owner, x, y, z, planted_at FROM ai_drugs_plants")).map((r) => ({
 			id: Number(r.id),
 			owner: Number(r.owner),
 			x: r.x,
 			y: r.y,
 			z: r.z,
 			plantedAt: Number(r.planted_at)
-		});
-		log$1.info(`${this.byId.size} plants loaded`);
-		for (let [source, w] of this.watching) this.watch(source, w.cx, w.cy);
+		}));
+		for (let plant of loaded) this.count(plant);
+		this.stream.load(loaded), log$1.info(`${this.stream.size} plants loaded`);
 	}
-	index(plant) {
-		this.byId.set(plant.id, plant);
-		let { cx, cy } = cellOf(plant.x, plant.y);
-		addTo(this.cells, cellKey(cx, cy), plant.id), addTo(this.byMinute, Math.floor(plant.plantedAt / MINUTE), plant.id), this.owners.set(plant.owner, (this.owners.get(plant.owner) ?? 0) + 1);
+	count(plant) {
+		addTo(this.byMinute, Math.floor(plant.plantedAt / MINUTE), plant.id), this.owners.set(plant.owner, (this.owners.get(plant.owner) ?? 0) + 1);
 	}
 	get(id) {
-		return this.byId.get(id);
+		return this.stream.get(id);
 	}
 	ownedBy(owner) {
 		let count = this.owners.get(owner) ?? 0;
@@ -15909,49 +16106,11 @@ const plants = new class {
 	}
 	near(x, y, metres) {
 		for (let spot of this.pending) if (Math.hypot(spot.x - x, spot.y - y) < metres) return !0;
-		let { cx, cy } = cellOf(x, y);
-		for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let id of this.cells.get(cellKey(cx + dx, cy + dy)) ?? []) {
-			let p = this.byId.get(id);
-			if (p && Math.hypot(p.x - x, p.y - y) < metres) return !0;
-		}
+		for (let p of this.stream.around(x, y)) if (Math.hypot(p.x - x, p.y - y) < metres) return !0;
 		return !1;
 	}
-	watch(source, cx, cy) {
-		let before = this.watching.get(source);
-		before && this.forget(source, before.keys);
-		let keys = [], list = [];
-		for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
-			let key = cellKey(cx + dx, cy + dy);
-			keys.push(key), addTo(this.watchers, key, source);
-			for (let id of this.cells.get(key) ?? []) {
-				let p = this.byId.get(id);
-				p && list.push({
-					id: p.id,
-					x: p.x,
-					y: p.y,
-					z: p.z,
-					plantedAt: p.plantedAt
-				});
-			}
-		}
-		this.watching.set(source, {
-			cx,
-			cy,
-			keys
-		});
-		let args = [
-			list,
-			Date.now(),
-			settings.value.growMinutes
-		];
-		list.length > 50 ? TriggerLatentClientEvent(EVENTS.snapshot, source, 25e3, ...args) : emitNet(EVENTS.snapshot, source, ...args);
-	}
-	forget(source, keys) {
-		for (let key of keys) removeFrom(this.watchers, key, source);
-	}
-	watchersOf(plant) {
-		let { cx, cy } = cellOf(plant.x, plant.y);
-		return this.watchers.get(cellKey(cx, cy)) ?? new Set();
+	follow(source, cx, cy) {
+		this.stream.followReported(source, cx, cy);
 	}
 	async add(spot, z) {
 		let plantedAt = Date.now();
@@ -15972,15 +16131,7 @@ const plants = new class {
 				z,
 				plantedAt
 			};
-			this.index(plant);
-			let view = {
-				id,
-				x: spot.x,
-				y: spot.y,
-				z,
-				plantedAt
-			};
-			for (let source of this.watchersOf(plant)) emitNet(EVENTS.put, source, view);
+			this.count(plant), this.stream.set(plant);
 		} finally {
 			this.pending.delete(spot);
 		}
@@ -15994,15 +16145,11 @@ const plants = new class {
 	remove(ids) {
 		let gone = [];
 		for (let id of ids) {
-			let plant = this.byId.get(id);
+			let plant = this.stream.get(id);
 			if (!plant) continue;
-			this.byId.delete(id);
-			let { cx, cy } = cellOf(plant.x, plant.y);
-			removeFrom(this.cells, cellKey(cx, cy), id), removeFrom(this.byMinute, Math.floor(plant.plantedAt / MINUTE), id);
+			this.stream.delete(id), removeFrom(this.byMinute, Math.floor(plant.plantedAt / MINUTE), id);
 			let owned = (this.owners.get(plant.owner) ?? 1) - 1;
-			owned > 0 ? this.owners.set(plant.owner, owned) : this.owners.delete(plant.owner);
-			for (let source of this.watchersOf(plant)) emitNet(EVENTS.remove, source, id);
-			gone.push(id);
+			owned > 0 ? this.owners.set(plant.owner, owned) : this.owners.delete(plant.owner), gone.push(id);
 		}
 		for (let i = 0; i < gone.length; i += 500) {
 			let chunk = gone.slice(i, i + 500);
@@ -16025,10 +16172,7 @@ onClientEvent(EVENTS.area, {
 		count: 2,
 		windowMs: 1e3
 	}
-}, (source, cx, cy) => {
-	let p = coordsOf(source), real = cellOf(p.x, p.y);
-	Math.abs(real.cx - cx) > 1 || Math.abs(real.cy - cy) > 1 || plants.watch(source, cx, cy);
-});
+}, (source, cx, cy) => plants.follow(source, cx, cy));
 async function plantSeed(source) {
 	let s = settings.value, ped = GetPlayerPed(String(source)), charId = online.character(source)?.id;
 	if (charId === void 0 || GetVehiclePedIsIn(ped, !1)) return;
