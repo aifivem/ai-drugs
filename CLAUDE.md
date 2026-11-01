@@ -23,4 +23,4 @@ Street sales to strangers (switched on from the radial menu) and weed plants tha
 
 ## Entry points
 
-- Sales `resource/server/index.ts`, plant store and streaming `resource/server/plants.ts`; client selling `resource/client/selling.ts`, plant view and harvest points (lib `Points`, the growth text is a label function) `resource/client/plants.ts`; the harvest is a lib `progressFor` in the server's `harvest` callback (plant and distance checked before and after the bar).
+- Sales `resource/server/sales.ts`, plants `resource/server/plants/` (store and streaming `store.ts`, seed `seed.ts`, harvest `harvest.ts`); client selling `resource/client/selling.ts`, plant view and harvest points (lib `Points`, the growth text is a label function) `resource/client/plants.ts`; the harvest is a lib `progressFor` in the server's `harvest` callback (plant and distance checked before and after the bar).

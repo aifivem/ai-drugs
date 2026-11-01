@@ -1,53 +1,18 @@
-import {
-  aiLog,
-  AreaStream,
-  coordsOf,
-  every,
-  inventory,
-  isNear,
-  notify,
-  onClientCallback,
-  onClientEvent,
-  online,
-  progressFor,
-  vehicleOf,
-} from "@aicore-fivem/lib/server";
+import { AreaStream } from "@aicore-fivem/lib/server";
 import { mysql } from "@aicore-fivem/mysql";
-import {
-  createLogger,
-  fail,
-  flatDistance,
-  oneArg,
-  randomInt,
-  readId,
-  readInt,
-} from "@aicore-fivem/lib/shared";
-import type { ActionResult } from "@aicore-fivem/shared";
-import { Locale, ResourceName } from "common";
+import { createLogger, flatDistance } from "@aicore-fivem/lib/shared";
+import { ResourceName } from "common";
 import { CELL, EVENTS, type Plant } from "common/drugs";
-import { isPolice, panel, settings } from "./content";
+import { settings } from "../content";
+import { addTo, removeFrom } from "./setMap";
 
 const log = createLogger(ResourceName);
 type Stored = Plant & { owner: number };
-type Spot = { owner: number; x: number; y: number };
+export type Spot = { owner: number; x: number; y: number };
 
 /** Rows per DELETE statement of the rot sweep. */
 const DELETE_CHUNK = 500;
-const MINUTE = 60_000;
-
-/** Adds `value` to the set at `key`, creating it. */
-function addTo<K, V>(map: Map<K, Set<V>>, key: K, value: V): void {
-  const set = map.get(key);
-  if (set) set.add(value);
-  else map.set(key, new Set([value]));
-}
-/** Removes `value` from the set at `key`, dropping an empty set. */
-function removeFrom<K, V>(map: Map<K, Set<V>>, key: K, value: V): void {
-  const set = map.get(key);
-  if (!set) return;
-  set.delete(value);
-  if (set.size === 0) map.delete(key);
-}
+export const MINUTE = 60_000;
 
 const viewOf = (p: Stored): Plant => ({
   id: p.id,
@@ -209,114 +174,3 @@ class Plants {
 }
 
 export const plants = new Plants();
-/** Loads the plants once the tables exist; the rot sweep starts after the load. */
-export const startPlants = () =>
-  plants
-    .load()
-    .then(() =>
-      every(MINUTE, () => plants.remove(plants.rotten(Date.now())), {
-        name: "plantRot",
-      }),
-    )
-    .catch((error: unknown) => log.error("plants could not be loaded", error));
-
-onClientEvent(
-  EVENTS.area,
-  {
-    args: ([cx, cy]): [number, number] | null => {
-      const x = readInt(cx, -1000, 1000);
-      const y = readInt(cy, -1000, 1000);
-      return x === null || y === null ? null : [x, y];
-    },
-    rate: { count: 2, windowMs: 1000 },
-  },
-  (source, cx, cy) => plants.follow(source, cx, cy),
-);
-
-/** The weed seed: planted on foot, away from other plants, within the character's plant limit. */
-async function plantSeed(source: number): Promise<void> {
-  const s = settings.value;
-  const charId = online.charId(source);
-  if (charId === undefined || vehicleOf(source)) return;
-  const p = coordsOf(source);
-  if (plants.near(p.x, p.y, 2))
-    return notify(source, Locale("DRUGS_ERR_TOO_CLOSE"), "error");
-  if (plants.ownedBy(charId) >= s.maxPlants)
-    return notify(source, Locale("DRUGS_ERR_MAX_PLANTS", s.maxPlants), "error");
-  const spot: Spot = { owner: charId, x: p.x, y: p.y };
-  // Held before the first await: a second seed used meanwhile sees this one.
-  plants.reserve(spot);
-  if (!inventory.removeItem(source, s.seedItem, 1)) {
-    plants.release(spot);
-    return;
-  }
-  try {
-    await plants.add(spot, p.z - 1);
-  } catch (error) {
-    log.error("planting failed", error);
-    inventory.addItem(source, s.seedItem, 1);
-    return;
-  }
-  notify(source, Locale("DRUGS_PLANTED", s.growMinutes), "success");
-  aiLog("drugs", "planted weed", { source });
-}
-
-/** The plant is gone or the player is not next to it. */
-function harvestRefusal(source: number, id: number): ActionResult | null {
-  const plant = plants.get(id);
-  if (!plant) return fail("DRUGS_ERR_GONE");
-  if (!isNear(source, plant, 3)) return fail("DRUGS_ERR_FAR");
-  return null;
-}
-
-onClientCallback(
-  EVENTS.harvest,
-  { args: oneArg(readId), lock: true },
-  async (source, id) => {
-    const refusal = harvestRefusal(source, id);
-    if (refusal) return refusal;
-    const done = await progressFor(source, {
-      label: Locale("DRUGS_HARVESTING"),
-      duration: 5000,
-      anim: { dict: "amb@world_human_gardener_plant@male@base", clip: "base" },
-      face: plants.get(id),
-    });
-    // A cancelled bar ends quietly.
-    if (!done) return { ok: true };
-    const again = harvestRefusal(source, id);
-    if (again) return again;
-    const plant = plants.get(id);
-    if (!plant) return fail("DRUGS_ERR_GONE");
-    const s = settings.value;
-    const ready = Date.now() - plant.plantedAt >= s.growMinutes * MINUTE;
-    if (!ready) {
-      if (!isPolice(source)) return fail("DRUGS_ERR_GROWING");
-      plants.remove([id]);
-      aiLog("drugs", "destroyed a plant", { source });
-      notify(source, Locale("DRUGS_DESTROYED"), "success");
-      return { ok: true };
-    }
-    const count = randomInt(s.budsMin, s.budsMax);
-    if (!inventory.addItem(source, s.budItem, count))
-      return fail("DRUGS_ERR_SPACE");
-    plants.remove([id]);
-    aiLog("drugs", `harvested ${count} buds`, { source });
-    notify(source, Locale("DRUGS_HARVESTED", count), "success");
-    return { ok: true };
-  },
-);
-
-// The seed is taken inside plantSeed, once every check passed. Each seed item name the panel ever sets is registered
-// once (an item cannot be unregistered); only the current one plants.
-const seedItems = new Set<string>();
-function registerSeed(): void {
-  const name = settings.value.seedItem;
-  if (seedItems.has(name)) return;
-  seedItems.add(name);
-  inventory.registerUsableItem(name, (source: number) => {
-    if (name === settings.value.seedItem) void plantSeed(source);
-    return false;
-  });
-}
-registerSeed();
-panel.onChange("settings", registerSeed);

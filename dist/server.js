@@ -354,7 +354,7 @@ function isNear(source, point, metres) {
 	return dx * dx + dy * dy + dz * dz <= metres * metres;
 }
 resourceExport(CORE.resource);
-const log$8 = createLogger(GetCurrentResourceName()), gates = new Set();
+const log$9 = createLogger(GetCurrentResourceName()), gates = new Set();
 on("playerDropped", () => {
 	let source = Number(globalThis.source);
 	for (let gate of gates) gate.release(source);
@@ -395,11 +395,11 @@ var ClientGate = class {
 		this.refusals.set(source, {
 			at: now,
 			skipped: 0
-		}), log$8.warn(`${this.name} refused for ${GetPlayerName(String(source))} (${source}): ${typeof reason == "string" ? reason : reason()}${more}`);
+		}), log$9.warn(`${this.name} refused for ${GetPlayerName(String(source))} (${source}): ${typeof reason == "string" ? reason : reason()}${more}`);
 	}
 };
 // ../../../packages/lib/src/server/callback.ts
-const log$7 = createLogger(GetCurrentResourceName()), resource$4 = GetCurrentResourceName(), REFUSED = Symbol("refused");
+const log$8 = createLogger(GetCurrentResourceName()), resource$5 = GetCurrentResourceName(), REFUSED = Symbol("refused");
 function onClientCallback(name, first, second) {
 	let [handler, options] = typeof first == "function" ? [first, second ?? {}] : [second, first], gate = new ClientGate(name, options, 20);
 	onNet(requestEvent(name), async (caller, id, ...raw) => {
@@ -411,13 +411,13 @@ function onClientCallback(name, first, second) {
 			let result = await gate.run(source, REFUSED, () => handler(source, ...args));
 			result === REFUSED ? emitNet(responseEvent(caller), source, id, !1, null) : emitNet(responseEvent(caller), source, id, !0, result ?? null);
 		} catch (error) {
-			log$7.error(`callback ${name} failed for ${source}`, error), emitNet(responseEvent(caller), source, id, !1, null);
+			log$8.error(`callback ${name} failed for ${source}`, error), emitNet(responseEvent(caller), source, id, !1, null);
 		}
 	});
 }
 const pending$1 = new Map();
 let nextId = 0;
-onNet(responseEvent(resource$4), (id, ok, result) => {
+onNet(responseEvent(resource$5), (id, ok, result) => {
 	let entry = typeof id == "number" ? pending$1.get(id) : void 0;
 	entry && entry.source === Number(globalThis.source) && (pending$1.delete(id), clearTimeout(entry.timer), ok === !0 ? entry.resolve(result) : entry.reject(Error("client callback failed")));
 });
@@ -432,7 +432,7 @@ function triggerClientCallback(name, source, args = [], timeoutMs = 3e4) {
 			resolve,
 			reject,
 			timer
-		}), emitNet(requestEvent(name), source, resource$4, id, ...args);
+		}), emitNet(requestEvent(name), source, resource$5, id, ...args);
 	});
 }
 // ../../../packages/lib/src/server/admin/patch.ts
@@ -477,7 +477,7 @@ function toPatch(value) {
 		default: return null;
 	}
 }
-const clone = (value) => value === void 0 ? value : JSON.parse(JSON.stringify(value)), core$26 = resourceExport(CORE.resource), ERR = {
+const clone = (value) => value === void 0 ? value : JSON.parse(JSON.stringify(value)), core$27 = resourceExport(CORE.resource), ERR = {
 	type: "ADMIN_ERR_TYPE",
 	range: "ADMIN_ERR_RANGE",
 	length: "ADMIN_ERR_LENGTH",
@@ -491,7 +491,7 @@ const clone = (value) => value === void 0 ? value : JSON.parse(JSON.stringify(va
 		if (cached && Date.now() - cached.at < 2e3) return cached.values.size > 0 ? cached.values : null;
 		let list = [];
 		try {
-			list = core$26.GetLookupValues(source);
+			list = core$27.GetLookupValues(source);
 		} catch {}
 		let values = new Set(Array.isArray(list) ? list.filter((v) => typeof v == "string") : []);
 		return this.lists.set(source, {
@@ -620,11 +620,7 @@ function applyEdit(data, patch, spec) {
 	}
 	return [spec.kind === "records" ? patch.key : void 0];
 }
-// ../../../packages/lib/src/server/admin/jsonSchema.ts
-const SCHEMA_KEY = {
-	type: "string",
-	description: "This file's JSON Schema (for editors)."
-};
+// ../../../packages/lib/src/server/admin/descriptions.ts
 function langFile(resource) {
 	try {
 		let raw = JSON.parse(LoadResourceFile(resource, "locales/en.json") ?? "{}");
@@ -651,6 +647,11 @@ function describe(schema, file, lang) {
 	for (let tab of schema.tabs) if (tab.file === file) for (let card of tab.cards) collect(card.fields, "", lang, out);
 	return out;
 }
+// ../../../packages/lib/src/server/admin/jsonSchema.ts
+const SCHEMA_KEY = {
+	type: "string",
+	description: "This file's JSON Schema (for editors)."
+};
 function toJson(spec, path, desc) {
 	let description = desc.get(path), base = description ? { description } : {};
 	switch (spec.type) {
@@ -755,27 +756,20 @@ function writeSchema(resource, name, text, log) {
 	let dir = `${GetResourcePath(resource)}/data/schemas`;
 	(0, node_fs_promises.mkdir)(dir, { recursive: !0 }).then(() => (0, node_fs_promises.writeFile)(`${dir}/${name}.schema.json`, text, "utf8")).catch((error) => log.error(`writing ${resource}/${path} failed`, error));
 }
-// ../../../packages/lib/src/server/admin/panel.ts
-const core$25 = resourceExport(CORE.resource);
-var AdminPanel = class {
+// ../../../packages/lib/src/server/admin/panelFiles.ts
+const core$26 = resourceExport(CORE.resource);
+var PanelFiles = class {
 	schema;
 	data = new Map();
 	dataFiles = new Map();
 	handlers = new Map();
-	rules = new Map();
-	actions = new Map();
 	views = new FileViews((file) => this.get(file));
 	worldChanges = new Map();
 	resource = GetCurrentResourceName();
 	log = createLogger(this.resource);
-	editor = 0;
 	constructor(schema) {
 		this.schema = schema;
 		for (let [name, spec] of Object.entries(schema.files)) this.load(name, spec);
-		registerExport("AdminPanelSnapshot", () => this.snapshot()), registerExport("AdminPanelData", () => this.dataSnapshot()), registerExport("AdminPanelSummary", () => this.summary()), registerExport("AdminPanelApply", (admin, patch) => this.apply(admin, patch)), onClientCallback(ADMIN.worldChangesCallback(this.resource), () => Object.fromEntries(this.worldChanges), { rate: {
-			count: 4,
-			windowMs: 1e4
-		} }), setImmediate(() => core$25.RegisterAdminPanel(this.resource));
 	}
 	get(file) {
 		return this.data.get(file) ?? {};
@@ -783,17 +777,68 @@ var AdminPanel = class {
 	onChange(file, handler) {
 		this.handlers.set(file, [...this.handlers.get(file) ?? [], handler]);
 	}
-	rule(file, rule) {
-		this.rules.set(file, rule);
-	}
-	onAction(id, handler) {
-		this.actions.set(id, handler);
-	}
 	view(file, read) {
 		return this.views.view(file, read);
 	}
 	records(file, readOne) {
 		return this.views.records(file, readOne);
+	}
+	commit(file, key, value) {
+		let data = this.data.get(file);
+		data && (key === void 0 ? isRecord(value) && this.data.set(file, clone(value)) : value === null ? delete data[key] : data[key] = clone(value), this.changed(file, key));
+	}
+	commitAfter(file, key, value) {
+		setImmediate(() => this.commit(file, key, value));
+	}
+	store(patch, spec) {
+		let data = this.data.get(patch.file) ?? {}, keys = applyEdit(data, patch, spec);
+		if (keys.length !== 0) {
+			this.data.set(patch.file, data);
+			for (let key of keys) this.changed(patch.file, key);
+		}
+	}
+	changed(file, key) {
+		let spec = this.schema.files[file], data = this.get(file), value = key === void 0 ? data : data[key] ?? null;
+		this.dataFiles.get(file)?.write(data), this.views.changed(file, key, value);
+		for (let handler of this.handlers.get(file) ?? []) handler(key, value);
+		if (core$26.AdminPanelChanged({
+			resource: this.resource,
+			file,
+			key,
+			value: clone(value)
+		}), spec?.sync !== "all") return;
+		let changes = this.worldChanges.get(file) ?? {};
+		changes[key ?? ""] = clone(value), this.worldChanges.set(file, changes), emitNet(ADMIN.worldEvent(this.resource), -1, file, key ?? null, value);
+	}
+	load(name, spec) {
+		if (spec.memory) {
+			this.data.set(name, {});
+			return;
+		}
+		let file = new DataFile(this.resource, name, this.log);
+		this.dataFiles.set(name, file), file.schemaRef = `./schemas/${name}.schema.json`, writeSchema(this.resource, name, fileSchema(this.resource, this.schema, name, spec), this.log);
+		let raw = file.read(), data = isRecord(raw) ? raw : {}, filled = !1;
+		if (spec.kind === "settings") for (let [section, value] of Object.entries(spec.defaults ?? {})) section in data || (data[section] = clone(value), filled = !0);
+		this.data.set(name, data), (filled || raw === null || !file.hasSchemaRef()) && file.write(data);
+	}
+};
+// ../../../packages/lib/src/server/admin/panel.ts
+const core$25 = resourceExport(CORE.resource);
+var AdminPanel = class extends PanelFiles {
+	rules = new Map();
+	actions = new Map();
+	editor = 0;
+	constructor(schema) {
+		super(schema), registerExport("AdminPanelSnapshot", () => this.snapshot()), registerExport("AdminPanelData", () => this.dataSnapshot()), registerExport("AdminPanelSummary", () => this.summary()), registerExport("AdminPanelApply", (admin, patch) => this.apply(admin, patch)), onClientCallback(ADMIN.worldChangesCallback(this.resource), () => Object.fromEntries(this.worldChanges), { rate: {
+			count: 4,
+			windowMs: 1e4
+		} }), setImmediate(() => core$25.RegisterAdminPanel(this.resource));
+	}
+	rule(file, rule) {
+		this.rules.set(file, rule);
+	}
+	onAction(id, handler) {
+		this.actions.set(id, handler);
 	}
 	snapshot() {
 		return {
@@ -871,44 +916,6 @@ var AdminPanel = class {
 			};
 		}
 	}
-	commit(file, key, value) {
-		let data = this.data.get(file);
-		data && (key === void 0 ? isRecord(value) && this.data.set(file, clone(value)) : value === null ? delete data[key] : data[key] = clone(value), this.changed(file, key));
-	}
-	commitAfter(file, key, value) {
-		setImmediate(() => this.commit(file, key, value));
-	}
-	store(patch, spec) {
-		let data = this.data.get(patch.file) ?? {}, keys = applyEdit(data, patch, spec);
-		if (keys.length !== 0) {
-			this.data.set(patch.file, data);
-			for (let key of keys) this.changed(patch.file, key);
-		}
-	}
-	changed(file, key) {
-		let spec = this.schema.files[file], data = this.get(file), value = key === void 0 ? data : data[key] ?? null;
-		this.dataFiles.get(file)?.write(data), this.views.changed(file, key, value);
-		for (let handler of this.handlers.get(file) ?? []) handler(key, value);
-		if (core$25.AdminPanelChanged({
-			resource: this.resource,
-			file,
-			key,
-			value: clone(value)
-		}), spec?.sync !== "all") return;
-		let changes = this.worldChanges.get(file) ?? {};
-		changes[key ?? ""] = clone(value), this.worldChanges.set(file, changes), emitNet(ADMIN.worldEvent(this.resource), -1, file, key ?? null, value);
-	}
-	load(name, spec) {
-		if (spec.memory) {
-			this.data.set(name, {});
-			return;
-		}
-		let file = new DataFile(this.resource, name, this.log);
-		this.dataFiles.set(name, file), file.schemaRef = `./schemas/${name}.schema.json`, writeSchema(this.resource, name, fileSchema(this.resource, this.schema, name, spec), this.log);
-		let raw = file.read(), data = isRecord(raw) ? raw : {}, filled = !1;
-		if (spec.kind === "settings") for (let [section, value] of Object.entries(spec.defaults ?? {})) section in data || (data[section] = clone(value), filled = !0);
-		this.data.set(name, data), (filled || raw === null || !file.hasSchemaRef()) && file.write(data);
-	}
 };
 function labelOf(record, path) {
 	if (!path) return null;
@@ -965,7 +972,7 @@ function reindex(index, source, before, after) {
 		set || index.set(name, set = new Set()), set.add(source);
 	}
 }
-var OnlinePlayers = class {
+var OnlineMirror = class {
 	players = new Map();
 	onDuty = new Map();
 	jobIndex = new Map();
@@ -1017,6 +1024,7 @@ var OnlinePlayers = class {
 		let set = this.onDuty.get(job);
 		set || this.onDuty.set(job, set = new Set()), set.add(source);
 	}
+}, OnlinePlayers = class extends OnlineMirror {
 	sources() {
 		return this.start(), this.players.keys();
 	}
@@ -1084,7 +1092,7 @@ var OnlinePlayers = class {
 };
 const EMPTY = new Set(), online = new OnlinePlayers();
 resourceExport(CORE.resource), resourceExport(CORE.resource);
-// ../../../packages/lib/src/server/vehicle.ts
+// ../../../packages/lib/src/server/netEntity.ts
 function entityFromNet(netId, type) {
 	if (readId(netId) === null) return 0;
 	let entity = NetworkGetEntityFromNetworkId(netId);
@@ -1134,21 +1142,12 @@ var PlayerMap = class extends Map {
 		for (let [key, until] of this.until) until <= now && this.until.delete(key);
 		this.sweepAt = Math.max(64, this.until.size * 2);
 	}
-}, AreaStream = class {
-	options;
+}, AreaGrid = class {
 	items = new Map();
 	cells = new Map();
-	followers = new PlayerMap({ onDrop: (source, f) => this.leave(source, f) });
-	inCell = new Map();
-	alsoOf = new PlayerMap({ onDrop: (_source, entries) => {
-		for (let entry of entries) entry.also = void 0;
-	} });
 	size_;
-	range;
-	chunk;
-	stale = !1;
-	constructor(options) {
-		this.options = options, this.size_ = options.cellSize ?? 64, this.range = options.range ?? 1, this.chunk = options.chunk ?? 50;
+	constructor(cellSize) {
+		this.size_ = cellSize;
 	}
 	get size() {
 		return this.items.size;
@@ -1170,49 +1169,25 @@ var PlayerMap = class extends Map {
 		let { cx, cy } = this.cellOf(x, y);
 		for (let dx = -cells; dx <= cells; dx++) for (let dy = -cells; dy <= cells; dy++) for (let entry of this.cells.get(cellKey(cx + dx, cy + dy)) ?? []) yield entry.item;
 	}
-	set(item, resend = !0) {
-		this.stale && this.followAll();
-		let { cx, cy } = this.cellOf(item.x, item.y), also = this.options.alsoTo?.(item), entry = this.items.get(item.id);
-		if (!entry) {
-			let fresh = {
-				item,
-				cx,
-				cy,
-				also: void 0
-			};
-			this.items.set(item.id, fresh), this.file(fresh), this.setAlso(fresh, also);
-			let put = [this.options.view(item)];
-			for (let source of this.who(cx, cy, also)) this.send(source, put, []);
-			return;
-		}
-		let before = this.who(entry.cx, entry.cy, entry.also);
-		(entry.cx !== cx || entry.cy !== cy) && (this.unfile(entry), entry.cx = cx, entry.cy = cy, this.file(entry)), entry.item = item, this.setAlso(entry, also);
-		let after = this.who(cx, cy, also), gone = [item.id];
-		for (let source of before) after.has(source) || this.send(source, [], gone);
-		let put = [this.options.view(item)];
-		for (let source of after) (resend || !before.has(source)) && this.send(source, put, []);
+	file(entry) {
+		let key = cellKey(entry.cx, entry.cy), set = this.cells.get(key);
+		set || this.cells.set(key, set = new Set()), set.add(entry);
 	}
-	delete(id) {
-		let entry = this.items.get(id);
-		if (!entry) return;
-		this.items.delete(id), this.unfile(entry);
-		let gone = [id];
-		for (let source of this.who(entry.cx, entry.cy, entry.also)) this.send(source, [], gone);
-		this.setAlso(entry, void 0);
+	unfile(entry) {
+		let key = cellKey(entry.cx, entry.cy), set = this.cells.get(key);
+		set?.delete(entry), set?.size === 0 && this.cells.delete(key);
 	}
-	load(items) {
-		for (let item of items) {
-			let old = this.items.get(item.id);
-			old && (this.unfile(old), this.setAlso(old, void 0));
-			let { cx, cy } = this.cellOf(item.x, item.y), entry = {
-				item,
-				cx,
-				cy,
-				also: void 0
-			};
-			this.items.set(item.id, entry), this.file(entry), this.setAlso(entry, this.options.alsoTo?.(item));
-		}
-		for (let [source, f] of this.followers) this.snapshot(source, f);
+}, AreaFollowers = class extends AreaGrid {
+	options;
+	followers = new PlayerMap({ onDrop: (source, f) => this.leave(source, f) });
+	inCell = new Map();
+	alsoOf = new PlayerMap({ onDrop: (_source, entries) => {
+		for (let entry of entries) entry.also = void 0;
+	} });
+	range;
+	chunk;
+	constructor(options) {
+		super(options.cellSize ?? 64), this.options = options, this.range = options.range ?? 1, this.chunk = options.chunk ?? 50;
 	}
 	recipients(id) {
 		let entry = this.items.get(id);
@@ -1224,44 +1199,6 @@ var PlayerMap = class extends Map {
 		if (entry.also === source) return !0;
 		let f = this.followers.get(source);
 		return f !== void 0 && Math.abs(f.cx - entry.cx) <= this.range && Math.abs(f.cy - entry.cy) <= this.range;
-	}
-	start(source, at = coordsOf(source)) {
-		let { cx, cy } = this.cellOf(at.x, at.y), old = this.followers.get(source);
-		old && this.leave(source, old);
-		let f = {
-			cx,
-			cy
-		};
-		this.followers.set(source, f), this.enter(source, f), this.snapshot(source, f);
-	}
-	follow(source, cx, cy) {
-		let f = this.followers.get(source);
-		if (!f) {
-			let fresh = {
-				cx,
-				cy
-			};
-			return this.followers.set(source, fresh), this.enter(source, fresh), this.snapshot(source, fresh);
-		}
-		this.move(source, f, cx, cy);
-	}
-	followReported(source, cx, cy) {
-		let p = coordsOf(source), real = this.cellOf(p.x, p.y);
-		return Math.abs(real.cx - cx) > 1 || Math.abs(real.cy - cy) > 1 ? !1 : (this.follow(source, cx, cy), !0);
-	}
-	followAll() {
-		if (this.items.size === 0) this.stale = !0;
-		else {
-			this.stale = !1;
-			for (let [source, f] of this.followers) {
-				let p = coordsOf(source), { cx, cy } = this.cellOf(p.x, p.y);
-				this.move(source, f, cx, cy);
-			}
-		}
-	}
-	stop(source, tell = !1) {
-		let f = this.followers.get(source);
-		f && (this.followers.delete(source), this.leave(source, f), tell && this.emit(source, !0, [], []));
 	}
 	following(source) {
 		return this.followers.has(source);
@@ -1306,14 +1243,6 @@ var PlayerMap = class extends Map {
 		let set = this.alsoOf.get(also);
 		set || this.alsoOf.set(also, set = new Set()), set.add(entry);
 	}
-	file(entry) {
-		let key = cellKey(entry.cx, entry.cy), set = this.cells.get(key);
-		set || this.cells.set(key, set = new Set()), set.add(entry);
-	}
-	unfile(entry) {
-		let key = cellKey(entry.cx, entry.cy), set = this.cells.get(key);
-		set?.delete(entry), set?.size === 0 && this.cells.delete(key);
-	}
 	enter(source, f) {
 		let key = cellKey(f.cx, f.cy), set = this.inCell.get(key);
 		set || this.inCell.set(key, set = new Set()), set.add(source);
@@ -1321,6 +1250,90 @@ var PlayerMap = class extends Map {
 	leave(source, f) {
 		let key = cellKey(f.cx, f.cy), set = this.inCell.get(key);
 		set?.delete(source), set?.size === 0 && this.inCell.delete(key);
+	}
+}, AreaStream = class extends AreaFollowers {
+	stale = !1;
+	set(item, resend = !0) {
+		this.stale && this.followAll();
+		let { cx, cy } = this.cellOf(item.x, item.y), also = this.options.alsoTo?.(item), entry = this.items.get(item.id);
+		if (!entry) {
+			let fresh = {
+				item,
+				cx,
+				cy,
+				also: void 0
+			};
+			this.items.set(item.id, fresh), this.file(fresh), this.setAlso(fresh, also);
+			let put = [this.options.view(item)];
+			for (let source of this.who(cx, cy, also)) this.send(source, put, []);
+			return;
+		}
+		let before = this.who(entry.cx, entry.cy, entry.also);
+		(entry.cx !== cx || entry.cy !== cy) && (this.unfile(entry), entry.cx = cx, entry.cy = cy, this.file(entry)), entry.item = item, this.setAlso(entry, also);
+		let after = this.who(cx, cy, also), gone = [item.id];
+		for (let source of before) after.has(source) || this.send(source, [], gone);
+		let put = [this.options.view(item)];
+		for (let source of after) (resend || !before.has(source)) && this.send(source, put, []);
+	}
+	delete(id) {
+		let entry = this.items.get(id);
+		if (!entry) return;
+		this.items.delete(id), this.unfile(entry);
+		let gone = [id];
+		for (let source of this.who(entry.cx, entry.cy, entry.also)) this.send(source, [], gone);
+		this.setAlso(entry, void 0);
+	}
+	load(items) {
+		for (let item of items) {
+			let old = this.items.get(item.id);
+			old && (this.unfile(old), this.setAlso(old, void 0));
+			let { cx, cy } = this.cellOf(item.x, item.y), entry = {
+				item,
+				cx,
+				cy,
+				also: void 0
+			};
+			this.items.set(item.id, entry), this.file(entry), this.setAlso(entry, this.options.alsoTo?.(item));
+		}
+		for (let [source, f] of this.followers) this.snapshot(source, f);
+	}
+	start(source, at = coordsOf(source)) {
+		let { cx, cy } = this.cellOf(at.x, at.y), old = this.followers.get(source);
+		old && this.leave(source, old);
+		let f = {
+			cx,
+			cy
+		};
+		this.followers.set(source, f), this.enter(source, f), this.snapshot(source, f);
+	}
+	follow(source, cx, cy) {
+		let f = this.followers.get(source);
+		if (!f) {
+			let fresh = {
+				cx,
+				cy
+			};
+			return this.followers.set(source, fresh), this.enter(source, fresh), this.snapshot(source, fresh);
+		}
+		this.move(source, f, cx, cy);
+	}
+	followReported(source, cx, cy) {
+		let p = coordsOf(source), real = this.cellOf(p.x, p.y);
+		return Math.abs(real.cx - cx) > 1 || Math.abs(real.cy - cy) > 1 ? !1 : (this.follow(source, cx, cy), !0);
+	}
+	followAll() {
+		if (this.items.size === 0) this.stale = !0;
+		else {
+			this.stale = !1;
+			for (let [source, f] of this.followers) {
+				let p = coordsOf(source), { cx, cy } = this.cellOf(p.x, p.y);
+				this.move(source, f, cx, cy);
+			}
+		}
+	}
+	stop(source, tell = !1) {
+		let f = this.followers.get(source);
+		f && (this.followers.delete(source), this.leave(source, f), tell && this.emit(source, !0, [], []));
 	}
 };
 // ../../../packages/lib/src/server/progressFor.ts
@@ -1370,10 +1383,10 @@ new class {
 		let def = this.gangs.get(name);
 		return def === void 0 && this.gangs.set(name, def = core$19.GetGangDefinition(name) ?? null), def;
 	}
-}();
-// ../../../packages/lib/src/server/command.ts
+}(), createLogger(GetCurrentResourceName());
+// ../../../packages/lib/src/server/command/commandSet.ts
 const resource$3 = GetCurrentResourceName();
-createLogger(resource$3), new class {
+new class {
 	list = [];
 	sent = new Map();
 	announced = 0;
@@ -1400,12 +1413,12 @@ createLogger(resource$3), new class {
 	}
 }();
 // ../../../packages/lib/src/server/netEvent.ts
-const log$4 = createLogger(GetCurrentResourceName());
+const log$5 = createLogger(GetCurrentResourceName());
 function onClientEvent(name, first, second) {
 	let [handler, options] = typeof first == "function" ? [first, second ?? {}] : [second, first], gate = new ClientGate(name, options, 10);
 	onNet(name, (...raw) => {
 		let source = Number(globalThis.source), args = gate.check(source, raw);
-		args && gate.run(source, void 0, () => handler(source, ...args)).catch((error) => log$4.error(`event ${name} failed for ${source}`, error));
+		args && gate.run(source, void 0, () => handler(source, ...args)).catch((error) => log$5.error(`event ${name} failed for ${source}`, error));
 	});
 }
 // ../../../packages/mysql/src/typeCast.ts
@@ -15651,7 +15664,7 @@ const mysql = {
 	startTransaction: (work) => runStartTransaction(work).catch((error) => (console.error(errorText(resource, error)), !1)),
 	setPoolSize,
 	close: closePool
-}, log$3 = createLogger("aicore-lib"), CREATE_TABLE = /^CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+`?([A-Za-z0-9_]+)`?\s*\(/i, NON_COLUMN_LINE = /^(PRIMARY|UNIQUE|KEY|INDEX|CONSTRAINT|FOREIGN|FULLTEXT|SPATIAL|CHECK)\b/i;
+}, log$4 = createLogger("aicore-lib"), CREATE_TABLE = /^CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+`?([A-Za-z0-9_]+)`?\s*\(/i, NON_COLUMN_LINE = /^(PRIMARY|UNIQUE|KEY|INDEX|CONSTRAINT|FOREIGN|FULLTEXT|SPATIAL|CHECK)\b/i;
 function stripComments(sql) {
 	return sql.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*--.*$/gm, "");
 }
@@ -15697,55 +15710,16 @@ async function createDatabaseTables(resource, file) {
 	for (let sql of statements) {
 		let statement = parseStatement(sql);
 		if (!statement) {
-			log$3.warn(`${resource}/${file}: skipped statement (only CREATE TABLE IF NOT EXISTS is applied)`);
+			log$4.warn(`${resource}/${file}: skipped statement (only CREATE TABLE IF NOT EXISTS is applied)`);
 			continue;
 		}
 		let columns = await existingColumns(statement.table);
-		if (!columns) await mysql.query(statement.sql), log$3.info(`^2created table ${statement.table}^7 (${resource})`);
-		else for (let [name, definition] of statement.columns) columns.has(name) || (await mysql.query(`ALTER TABLE \`${statement.table}\` ADD COLUMN ${definition}`), log$3.info(`^2added column ${statement.table}.${name}^7 (${resource})`));
+		if (!columns) await mysql.query(statement.sql), log$4.info(`^2created table ${statement.table}^7 (${resource})`);
+		else for (let [name, definition] of statement.columns) columns.has(name) || (await mysql.query(`ALTER TABLE \`${statement.table}\` ADD COLUMN ${definition}`), log$4.info(`^2added column ${statement.table}.${name}^7 (${resource})`));
 	}
 }
-let log$2 = null;
-var ScheduledJob = class {
-	interval;
-	fn;
-	name;
-	gen = 0;
-	active = !1;
-	stopped = !1;
-	quietUntil = 0;
-	skipped = 0;
-	constructor(interval, fn, name) {
-		this.interval = interval, this.fn = fn, this.name = name;
-	}
-	get running() {
-		return this.active;
-	}
-	set(active) {
-		active === this.active || active && this.stopped || (this.active = active, active ? scheduler.activate(this) : scheduler.deactivate(this));
-	}
-	stop() {
-		this.set(!1), this.stopped = !0;
-	}
-	call() {
-		try {
-			let result = this.fn();
-			result instanceof Promise && result.catch((error) => this.fail(error));
-		} catch (error) {
-			this.fail(error);
-		}
-	}
-	fail(error) {
-		let now = GetGameTimer();
-		if (now < this.quietUntil) {
-			this.skipped++;
-			return;
-		}
-		this.quietUntil = now + 1e4;
-		let more = this.skipped ? ` (+${this.skipped} more)` : "";
-		this.skipped = 0, log$2 ??= createLogger(GetCurrentResourceName()), log$2.error(`job "${this.name}" failed${more}`, error instanceof Error ? error.stack ?? error.message : error);
-	}
-}, Group = class {
+// ../../../packages/lib/src/fivem/scheduler/group.ts
+var Group = class {
 	interval;
 	jobs = Array(8);
 	gens = Array(8).fill(0);
@@ -15831,14 +15805,56 @@ const scheduler = new class {
 		groups.length = kept, this.nextDue = soonest;
 	};
 }();
+let log$3 = null;
+var ScheduledJob = class {
+	interval;
+	fn;
+	name;
+	gen = 0;
+	active = !1;
+	stopped = !1;
+	quietUntil = 0;
+	skipped = 0;
+	constructor(interval, fn, name) {
+		this.interval = interval, this.fn = fn, this.name = name;
+	}
+	get running() {
+		return this.active;
+	}
+	set(active) {
+		active === this.active || active && this.stopped || (this.active = active, active ? scheduler.activate(this) : scheduler.deactivate(this));
+	}
+	stop() {
+		this.set(!1), this.stopped = !0;
+	}
+	call() {
+		try {
+			let result = this.fn();
+			result instanceof Promise && result.catch((error) => this.fail(error));
+		} catch (error) {
+			this.fail(error);
+		}
+	}
+	fail(error) {
+		let now = GetGameTimer();
+		if (now < this.quietUntil) {
+			this.skipped++;
+			return;
+		}
+		this.quietUntil = now + 1e4;
+		let more = this.skipped ? ` (+${this.skipped} more)` : "";
+		this.skipped = 0, log$3 ??= createLogger(GetCurrentResourceName()), log$3.error(`job "${this.name}" failed${more}`, error instanceof Error ? error.stack ?? error.message : error);
+	}
+};
 function every(ms, fn, options = {}) {
 	let job = new ScheduledJob(Math.max(0, Math.floor(ms)), fn, options.name ?? (fn.name || "anonymous"));
 	return options.active !== !1 && job.set(!0), job;
 }
-IsDuplicityVersion(), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource);
+IsDuplicityVersion(), IsDuplicityVersion(), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource);
 // ../../../packages/lib/src/server/dispatch.ts
 const core$15 = resourceExport(CORE.resource), dispatch = { alert: (alert) => core$15.SendDispatchAlert(alert) };
-resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource);
+// resource/server/logs.ts
+resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), aiLogChannels({ drugs: {} });
 // resource/common/locale.ts
 const Locale = createLocale(), ResourceName = GetCurrentResourceName();
 IsDuplicityVersion();
@@ -15883,6 +15899,44 @@ const DEFAULT_LOOK = {
 		"bkr_prop_weed_lrg_01a"
 	],
 	drawDistance: 100
+}, plantsFile = {
+	kind: "settings",
+	sync: "all",
+	sections: {
+		models: {
+			type: "object",
+			fields: {
+				small: {
+					type: "text",
+					min: 1,
+					max: 64
+				},
+				medium: {
+					type: "text",
+					min: 1,
+					max: 64
+				},
+				large: {
+					type: "text",
+					min: 1,
+					max: 64
+				}
+			}
+		},
+		drawDistance: {
+			type: "number",
+			min: 20,
+			max: 300
+		}
+	},
+	defaults: {
+		models: {
+			small: DEFAULT_LOOK.models[0],
+			medium: DEFAULT_LOOK.models[1],
+			large: DEFAULT_LOOK.models[2]
+		},
+		drawDistance: DEFAULT_LOOK.drawDistance
+	}
 }, drugsSchema = {
 	title: "ADMIN_TITLE",
 	icon: "flask",
@@ -15945,45 +15999,7 @@ const DEFAULT_LOOK = {
 				}
 			}
 		},
-		plants: {
-			kind: "settings",
-			sync: "all",
-			sections: {
-				models: {
-					type: "object",
-					fields: {
-						small: {
-							type: "text",
-							min: 1,
-							max: 64
-						},
-						medium: {
-							type: "text",
-							min: 1,
-							max: 64
-						},
-						large: {
-							type: "text",
-							min: 1,
-							max: 64
-						}
-					}
-				},
-				drawDistance: {
-					type: "number",
-					min: 20,
-					max: 300
-				}
-			},
-			defaults: {
-				models: {
-					small: DEFAULT_LOOK.models[0],
-					medium: DEFAULT_LOOK.models[1],
-					large: DEFAULT_LOOK.models[2]
-				},
-				drawDistance: DEFAULT_LOOK.drawDistance
-			}
-		}
+		plants: plantsFile
 	},
 	tabs: [
 		{
@@ -16197,7 +16213,8 @@ const DEFAULT_LOOK = {
 			}]
 		}
 	]
-}, core = resourceExport("ai-core"), panel = new AdminPanel(drugsSchema), settings = panel.view("settings", readSettings), isPolice = (source) => online.onDutyIn(source, settings.value.policeJobs), policeOnDuty = () => online.countOnDuty(settings.value.policeJobs), log$1 = createLogger(ResourceName), MINUTE = 6e4;
+}, core = resourceExport("ai-core"), panel = new AdminPanel(drugsSchema), settings = panel.view("settings", readSettings), isPolice = (source) => online.onDutyIn(source, settings.value.policeJobs), policeOnDuty = () => online.countOnDuty(settings.value.policeJobs);
+// resource/server/plants/setMap.ts
 function addTo(map, key, value) {
 	let set = map.get(key);
 	set ? set.add(value) : map.set(key, new Set([value]));
@@ -16206,7 +16223,8 @@ function removeFrom(map, key, value) {
 	let set = map.get(key);
 	set && (set.delete(value), set.size === 0 && map.delete(key));
 }
-const viewOf = (p) => ({
+// resource/server/plants/store.ts
+const log$2 = createLogger(ResourceName), MINUTE = 6e4, viewOf = (p) => ({
 	id: p.id,
 	x: p.x,
 	y: p.y,
@@ -16233,7 +16251,7 @@ const viewOf = (p) => ({
 			plantedAt: Number(r.planted_at)
 		}));
 		for (let plant of loaded) this.count(plant);
-		this.stream.load(loaded), log$1.info(`${this.stream.size} plants loaded`);
+		this.stream.load(loaded), log$2.info(`${this.stream.size} plants loaded`);
 	}
 	count(plant) {
 		addTo(this.byMinute, Math.floor(plant.plantedAt / MINUTE), plant.id), this.owners.set(plant.owner, (this.owners.get(plant.owner) ?? 0) + 1);
@@ -16299,7 +16317,7 @@ const viewOf = (p) => ({
 		}
 		for (let i = 0; i < gone.length; i += 500) {
 			let chunk = gone.slice(i, i + 500);
-			mysql.query("DELETE FROM ai_drugs_plants WHERE id IN (?)", [chunk]).catch((error) => log$1.error(`delete of ${chunk.length} plants failed`, error));
+			mysql.query("DELETE FROM ai_drugs_plants WHERE id IN (?)", [chunk]).catch((error) => log$2.error(`delete of ${chunk.length} plants failed`, error));
 		}
 	}
 	rotten(now) {
@@ -16308,17 +16326,35 @@ const viewOf = (p) => ({
 		else for (let minute = this.swept + 1; minute <= cutoff; minute++) out.push(...this.byMinute.get(minute) ?? []);
 		return this.swept = Math.max(this.swept, cutoff), out;
 	}
-}(), startPlants = () => plants.load().then(() => every(MINUTE, () => plants.remove(plants.rotten(Date.now())), { name: "plantRot" })).catch((error) => log$1.error("plants could not be loaded", error));
-onClientEvent(EVENTS.area, {
-	args: ([cx, cy]) => {
-		let x = readInt(cx, -1e3, 1e3), y = readInt(cy, -1e3, 1e3);
-		return x === null || y === null ? null : [x, y];
-	},
-	rate: {
-		count: 2,
-		windowMs: 1e3
-	}
-}, (source, cx, cy) => plants.follow(source, cx, cy));
+}();
+// resource/server/plants/harvest.ts
+function harvestRefusal(source, id) {
+	let plant = plants.get(id);
+	return plant ? isNear(source, plant, 3) ? null : fail("DRUGS_ERR_FAR") : fail("DRUGS_ERR_GONE");
+}
+async function harvest(source, id) {
+	let refusal = harvestRefusal(source, id);
+	if (refusal) return refusal;
+	if (!await progressFor(source, {
+		label: Locale("DRUGS_HARVESTING"),
+		duration: 5e3,
+		anim: {
+			dict: "amb@world_human_gardener_plant@male@base",
+			clip: "base"
+		},
+		face: plants.get(id)
+	})) return { ok: !0 };
+	let again = harvestRefusal(source, id);
+	if (again) return again;
+	let plant = plants.get(id);
+	if (!plant) return fail("DRUGS_ERR_GONE");
+	let s = settings.value;
+	if (!(Date.now() - plant.plantedAt >= s.growMinutes * 6e4)) return isPolice(source) ? (plants.remove([id]), aiLog("drugs", "destroyed a plant", { source }), notify(source, Locale("DRUGS_DESTROYED"), "success"), { ok: !0 }) : fail("DRUGS_ERR_GROWING");
+	let count = randomInt(s.budsMin, s.budsMax);
+	return inventory.addItem(source, s.budItem, count) ? (plants.remove([id]), aiLog("drugs", `harvested ${count} buds`, { source }), notify(source, Locale("DRUGS_HARVESTED", count), "success"), { ok: !0 }) : fail("DRUGS_ERR_SPACE");
+}
+// resource/server/plants/seed.ts
+const log$1 = createLogger(ResourceName);
 async function plantSeed(source) {
 	let s = settings.value, charId = online.charId(source);
 	if (charId === void 0 || vehicleOf(source)) return;
@@ -16341,43 +16377,27 @@ async function plantSeed(source) {
 		notify(source, Locale("DRUGS_PLANTED", s.growMinutes), "success"), aiLog("drugs", "planted weed", { source });
 	}
 }
-function harvestRefusal(source, id) {
-	let plant = plants.get(id);
-	return plant ? isNear(source, plant, 3) ? null : fail("DRUGS_ERR_FAR") : fail("DRUGS_ERR_GONE");
-}
-onClientCallback(EVENTS.harvest, {
-	args: oneArg(readId),
-	lock: !0
-}, async (source, id) => {
-	let refusal = harvestRefusal(source, id);
-	if (refusal) return refusal;
-	if (!await progressFor(source, {
-		label: Locale("DRUGS_HARVESTING"),
-		duration: 5e3,
-		anim: {
-			dict: "amb@world_human_gardener_plant@male@base",
-			clip: "base"
-		},
-		face: plants.get(id)
-	})) return { ok: !0 };
-	let again = harvestRefusal(source, id);
-	if (again) return again;
-	let plant = plants.get(id);
-	if (!plant) return fail("DRUGS_ERR_GONE");
-	let s = settings.value;
-	if (!(Date.now() - plant.plantedAt >= s.growMinutes * MINUTE)) return isPolice(source) ? (plants.remove([id]), aiLog("drugs", "destroyed a plant", { source }), notify(source, Locale("DRUGS_DESTROYED"), "success"), { ok: !0 }) : fail("DRUGS_ERR_GROWING");
-	let count = randomInt(s.budsMin, s.budsMax);
-	return inventory.addItem(source, s.budItem, count) ? (plants.remove([id]), aiLog("drugs", `harvested ${count} buds`, { source }), notify(source, Locale("DRUGS_HARVESTED", count), "success"), { ok: !0 }) : fail("DRUGS_ERR_SPACE");
-});
 const seedItems = new Set();
 function registerSeed() {
 	let name = settings.value.seedItem;
 	seedItems.has(name) || (seedItems.add(name), inventory.registerUsableItem(name, (source) => (name === settings.value.seedItem && plantSeed(source), !1)));
 }
-registerSeed(), panel.onChange("settings", registerSeed);
-// resource/server/index.ts
+// resource/server/plants/index.ts
 const log = createLogger(ResourceName);
-aiLogChannels({ drugs: {} }), createDatabaseTables(ResourceName, "sql/main.sql").then(startPlants).catch((error) => log.error("database setup failed", error));
+onClientEvent(EVENTS.area, {
+	args: ([cx, cy]) => {
+		let x = readInt(cx, -1e3, 1e3), y = readInt(cy, -1e3, 1e3);
+		return x === null || y === null ? null : [x, y];
+	},
+	rate: {
+		count: 2,
+		windowMs: 1e3
+	}
+}, (source, cx, cy) => plants.follow(source, cx, cy)), onClientCallback(EVENTS.harvest, {
+	args: oneArg(readId),
+	lock: !0
+}, harvest), registerSeed(), panel.onChange("settings", registerSeed), createDatabaseTables(ResourceName, "sql/main.sql").then(() => plants.load().then(() => every(MINUTE, () => plants.remove(plants.rotten(Date.now())), { name: "plantRot" })).catch((error) => log.error("plants could not be loaded", error))).catch((error) => log.error("database setup failed", error));
+// resource/server/sales.ts
 const saleCooldowns = new KeyedCooldowns(), servedBuyers = new KeyedCooldowns();
 function buyerNear(source, netId) {
 	let ped = pedFromNet(netId);
