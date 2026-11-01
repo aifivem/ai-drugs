@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.3](https://github.com/aifivem/ai-drugs/compare/v0.1.2...v0.1.3) (2026-11-01)
+
+
+### Code Refactoring
+
+* feature folders, side entries that only import, panel schema per tab ([ea51241](https://github.com/aifivem/ai-drugs/commit/ea5124192457bda71ad334e2bac7dcf2b1a43875))
+
 ## [0.1.2](https://github.com/aifivem/ai-drugs/compare/v0.1.1...v0.1.2) (2026-10-31)
 
 
