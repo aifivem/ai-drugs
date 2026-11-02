@@ -6,7 +6,7 @@ Part of [AI Core](https://aifivem.com): a TypeScript FiveM framework where every
 
 ## Install
 
-The [AI Core txAdmin recipe](https://github.com/aifivem/aicore-server) installs it with everything it needs. By hand: put this folder in `resources/[ai]/` and add `ensure ai-drugs` to `server.cfg` after `ensure ai-core`. It needs `ai-core`. The build (`dist/`, `fxmanifest.lua`) is committed, so no build tools are needed to run it.
+The [AI Core txAdmin recipe](https://github.com/aifivem/aicore-server) installs it with everything it needs. By hand: unzip `ai-drugs.zip` from the [latest release](https://github.com/aifivem/ai-drugs/releases/latest) into `resources/[ai]/` and add `ensure ai-drugs` to `server.cfg` after `ensure ai-core`. It needs `ai-core`. The zip is built and ready, so no build tools are needed to run it; its source builds with `bun install && bun run build` in the folder. `ai-drugs-runtime.zip` holds only the files the server runs, without the source.
 
 Settings live in the in-game admin panel (`/aiadmin`), not in config files.
 
