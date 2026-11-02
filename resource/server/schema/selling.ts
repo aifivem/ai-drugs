@@ -1,5 +1,5 @@
-import { spec } from "@aicore-fivem/lib/shared";
-import type { FileSpec, TabSpec } from "@aicore-fivem/shared";
+import { spec } from "@aifivem/lib/shared";
+import type { FileSpec, TabSpec } from "@aifivem/shared";
 
 export const settingsFile: FileSpec = {
   kind: "settings",

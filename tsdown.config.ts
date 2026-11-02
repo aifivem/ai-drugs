@@ -13,7 +13,7 @@ const config: Record<string, UserConfig> = {
     outputOptions: {
       entryFileNames: "[name].js",
     },
-    // FiveM loads one file per side: every import, the @aicore-fivem packages included, is bundled in.
+    // FiveM loads one file per side: every import, the @aifivem packages included, is bundled in.
     // These must be RegExp; tsdown treats a string like "/.*/" as a literal package name.
     deps: {
       alwaysBundle: [/.*/],

@@ -9,8 +9,8 @@ import {
   radial,
   requestAnimDict,
   showPrompt,
-} from "@aicore-fivem/lib/client";
-import { pickRandom, readFinite } from "@aicore-fivem/lib/shared";
+} from "@aifivem/lib/client";
+import { pickRandom, readFinite } from "@aifivem/lib/shared";
 import { Locale } from "common";
 import { EVENTS } from "common/drugs";
 

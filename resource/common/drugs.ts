@@ -5,7 +5,7 @@ import {
   readId,
   record,
   str,
-} from "@aicore-fivem/lib/shared";
+} from "@aifivem/lib/shared";
 
 /** ai-drugs' contracts and panel content. No natives. */
 

@@ -1,6 +1,6 @@
 // Generated from sql/main.sql by aicore-db-types (the build runs it). Do not edit: change the SQL and build.
 
-/** Row of each table as @aicore-fivem/mysql returns it. */
+/** Row of each table as @aifivem/mysql returns it. */
 export type Tables = {
   ai_drugs_plants: {
     id: number | string;

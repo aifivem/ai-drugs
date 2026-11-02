@@ -1,6 +1,6 @@
-import { AreaStream } from "@aicore-fivem/lib/server";
-import { mysql } from "@aicore-fivem/mysql";
-import { createLogger, flatDistance } from "@aicore-fivem/lib/shared";
+import { AreaStream } from "@aifivem/lib/server";
+import { mysql } from "@aifivem/mysql";
+import { createLogger, flatDistance } from "@aifivem/lib/shared";
 import { ResourceName } from "common";
 import { CELL, EVENTS, type Plant } from "common/drugs";
 import { settings } from "../content";

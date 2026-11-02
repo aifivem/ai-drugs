@@ -3,13 +3,13 @@ import {
   every,
   onClientCallback,
   onClientEvent,
-} from "@aicore-fivem/lib/server";
+} from "@aifivem/lib/server";
 import {
   createLogger,
   oneArg,
   readId,
   readInt,
-} from "@aicore-fivem/lib/shared";
+} from "@aifivem/lib/shared";
 import { ResourceName } from "common";
 import { EVENTS } from "common/drugs";
 import { panel } from "../content";

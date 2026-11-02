@@ -7,8 +7,8 @@ import {
   onServerEvent,
   Points,
   requestModel,
-} from "@aicore-fivem/lib/client";
-import { readFinite, readId, ServerClock } from "@aicore-fivem/lib/shared";
+} from "@aifivem/lib/client";
+import { readFinite, readId, ServerClock } from "@aifivem/lib/shared";
 import { Locale } from "common";
 import {
   CELL,

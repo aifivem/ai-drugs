@@ -1,4 +1,4 @@
-import { AdminPanel, online, resourceExport } from "@aicore-fivem/lib/server";
+import { AdminPanel, online, resourceExport } from "@aifivem/lib/server";
 import { readSettings } from "common/drugs";
 import { drugsSchema } from "./schema";
 
