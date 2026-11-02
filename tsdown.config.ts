@@ -10,6 +10,10 @@ const config: Record<string, UserConfig> = {
     // Maps sit next to the bundles but are never listed in `files` (players cannot download them); ai-core maps
     // client error stacks back to the source with them.
     sourcemap: "hidden",
+    // dist/ is not cleaned: the web build writes dist/web just before, and postBuild waits for it. In a folder
+    // without `[ai]` in its path (the release and check workflows) tsdown's clean removed it, so postBuild waited
+    // 20 minutes and the manifest got no ui_page. The bundles are overwritten on every build anyway.
+    clean: false,
     outputOptions: {
       entryFileNames: "[name].js",
     },
