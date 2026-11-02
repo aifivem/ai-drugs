@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.5](https://github.com/aifivem/ai-drugs/compare/v0.1.4...v0.1.5) (2026-11-02)
+
+
+### Documentation
+
+* install from the release zip ([0dd5834](https://github.com/aifivem/ai-drugs/commit/0dd583487d919acc591c1ceffb3912dd70736316))
+
+
+### Miscellaneous Chores
+
+* build files are no longer in git, the release zip carries them ([3fcafcf](https://github.com/aifivem/ai-drugs/commit/3fcafcf409a79f41fe7cac573917f46b723519d5))
+
 ## [0.1.4](https://github.com/aifivem/ai-drugs/compare/v0.1.3...v0.1.4) (2026-11-02)
 
 
