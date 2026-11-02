@@ -50,13 +50,7 @@
   ],
   "packages": {
     ".": {
-      "package-name": "ai-drugs",
-      "extra-files": [
-        {
-          "type": "generic",
-          "path": "fxmanifest.lua"
-        }
-      ]
+      "package-name": "ai-drugs"
     }
   }
 }
