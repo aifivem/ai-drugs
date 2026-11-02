@@ -1,0 +1,18 @@
+# Typecheck, lint and build on every pull request and push to main: see aifivem/.github.
+name: check
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    uses: aifivem/.github/.github/workflows/check.yml@main
