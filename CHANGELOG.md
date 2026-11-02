@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.4](https://github.com/aifivem/ai-drugs/compare/v0.1.3...v0.1.4) (2026-11-02)
+
+
+### Code Refactoring
+
+* import the shared packages from [@aifivem](https://github.com/aifivem) ([c75ccee](https://github.com/aifivem/ai-drugs/commit/c75cceea8f100b0f48db94d5c97b61a66e27b5c5))
+
 ## [0.1.3](https://github.com/aifivem/ai-drugs/compare/v0.1.2...v0.1.3) (2026-11-01)
 
 
